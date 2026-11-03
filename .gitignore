@@ -1,0 +1,20 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# IDE and local logs
+.idea/
+.vscode/
+*.iml
+*.log
+.DS_Store
+Thumbs.db
+
+# Build outputs
+**/target/
+**/build/
+**/.dart_tool/
+
+# Local UI backups
+/frontend/mealgo_driver_backup_*/

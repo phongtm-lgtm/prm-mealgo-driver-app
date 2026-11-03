@@ -1,0 +1,118 @@
+{
+  "info": {
+    "name": "MealGo — Customer & Restaurant → Driver App",
+    "description": "Customer và restaurant thao tác bằng Postman; driver dùng app. Chạy lần lượt folder 01, 02, 03. Sau đó tài xế nhận đơn trên app, chạy request Ready trong folder 04 trước khi tài xế lấy hàng. Folder 05 chỉ dùng khi cần kiểm tra hoặc hủy đơn. Đọc README.md đi kèm. Không Run toàn bộ collection vì có request xóa giỏ/hủy/từ chối đơn tùy chọn.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key":"baseUrl","value":"http://localhost:8080"},
+    {"key":"customerPhone","value":"0900000003"},
+    {"key":"merchantPhone","value":"0900000002"},
+    {"key":"password","value":"Mealgo123!"},
+    {"key":"customerToken","value":""},
+    {"key":"merchantToken","value":""},
+    {"key":"restaurantId","value":"f34137ef-9ddd-4662-9cbe-2814f12a2490"},
+    {"key":"menuItemId","value":"06bd74a7-9666-4adf-ac3e-b8218f1bd5ee"},
+    {"key":"quantity","value":"1"},
+    {"key":"recipientName","value":"Nguyễn Văn A"},
+    {"key":"recipientPhone","value":"0901234567"},
+    {"key":"dropoffAddress","value":"Điểm giao thử gần quán — thay bằng địa chỉ thực tế"},
+    {"key":"dropoffLatitude","value":"10.7630"},
+    {"key":"dropoffLongitude","value":"106.6825"},
+    {"key":"orderId","value":""},
+    {"key":"idempotencyKey","value":""},
+    {"key":"orderBody","value":""}
+  ],
+  "item": [
+    {
+      "name":"01 — Đăng nhập",
+      "item":[
+        {
+          "name":"Health",
+          "request":{"method":"GET","url":"{{baseUrl}}/actuator/health"},
+          "event":[{"listen":"test","script":{"exec":["pm.test('Backend UP', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('UP'); });"]}}]
+        },
+        {
+          "name":"Customer login — tự lưu token",
+          "request":{"method":"POST","url":"{{baseUrl}}/api/v1/auth/login","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"phoneNumber\":\"{{customerPhone}}\",\"password\":\"{{password}}\"}","options":{"raw":{"language":"json"}}}},
+          "event":[{"listen":"test","script":{"exec":["pm.test('Customer login', () => { pm.response.to.have.status(200); const d=pm.response.json(); pm.expect(d.role).to.eql('CUSTOMER'); pm.collectionVariables.set('customerToken',d.accessToken); });"]}}]
+        },
+        {
+          "name":"Restaurant login — tự lưu token",
+          "request":{"method":"POST","url":"{{baseUrl}}/api/v1/auth/login","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"phoneNumber\":\"{{merchantPhone}}\",\"password\":\"{{password}}\"}","options":{"raw":{"language":"json"}}}},
+          "event":[{"listen":"test","script":{"exec":["pm.test('Merchant login', () => { pm.response.to.have.status(200); const d=pm.response.json(); pm.expect(d.role).to.eql('MERCHANT'); pm.collectionVariables.set('merchantToken',d.accessToken); });"]}}]
+        }
+      ]
+    },
+    {
+      "name":"02 — Customer: giỏ hàng",
+      "auth":{"type":"bearer","bearer":[{"key":"token","value":"{{customerToken}}","type":"string"}]},
+      "item":[
+        {
+          "name":"Xem giỏ",
+          "request":{"method":"GET","url":"{{baseUrl}}/api/v1/customers/me/cart"}
+        },
+        {
+          "name":"Thêm món — cộng số lượng nếu đã có",
+          "request":{"method":"POST","url":"{{baseUrl}}/api/v1/customers/me/cart/items","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"menuItemId\":\"{{menuItemId}}\",\"quantity\":{{quantity}},\"note\":\"Không cay\"}","options":{"raw":{"language":"json"}}}},
+          "event":[{"listen":"test","script":{"exec":["pm.test('Đã thêm món', () => pm.response.to.have.status(200));"]}}]
+        },
+        {
+          "name":"Sửa số lượng món (không cộng dồn)",
+          "request":{"method":"PUT","url":"{{baseUrl}}/api/v1/customers/me/cart/items/{{menuItemId}}","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"quantity\":{{quantity}},\"note\":\"Không cay\"}","options":{"raw":{"language":"json"}}}}
+        }
+      ]
+    },
+    {
+      "name":"03 — Customer: đặt hàng từ giỏ",
+      "auth":{"type":"bearer","bearer":[{"key":"token","value":"{{customerToken}}","type":"string"}]},
+      "item":[
+        {
+          "name":"1. Chuẩn bị lần đặt MỚI — lấy giỏ, tạo key và snapshot body",
+          "request":{"method":"GET","url":"{{baseUrl}}/api/v1/customers/me/cart","description":"Chỉ chạy khi muốn tạo một đơn mới. Script lưu nội dung giỏ và địa chỉ vào orderBody, tạo idempotencyKey mới. Nếu lần đặt trước timeout, KHÔNG chạy lại bước này: gửi lại bước 2."},
+          "event":[{"listen":"test","script":{"exec":["pm.test('Chuẩn bị đơn mới', () => {", "  pm.response.to.have.status(200);", "  const c=pm.response.json();", "  pm.expect(c.items.length, 'Giỏ không được rỗng').to.be.above(0);", "  pm.expect(c.items.every(i => i.available), 'Món phải còn bán').to.eql(true);", "  const v=k => pm.variables.get(k);", "  const body={restaurantId:c.restaurantId,items:c.items.map(i=>({menuItemId:i.menuItemId,quantity:i.quantity,note:i.note})),recipient:{name:v('recipientName'),phone:v('recipientPhone')},dropoff:{address:v('dropoffAddress'),latitude:Number(v('dropoffLatitude')),longitude:Number(v('dropoffLongitude'))},deliveryNote:'Gọi trước khi giao',paymentMethod:'COD'};", "  pm.collectionVariables.set('orderBody',JSON.stringify(body));", "  pm.collectionVariables.set('idempotencyKey',pm.variables.replaceIn('{{$guid}}'));", "  pm.collectionVariables.set('orderId','');", "});"]}}]
+        },
+        {
+          "name":"2. Đặt hàng — retry chính request này nếu mạng lỗi",
+          "request":{"method":"POST","url":"{{baseUrl}}/api/v1/customers/me/orders","header":[{"key":"Content-Type","value":"application/json"},{"key":"Idempotency-Key","value":"{{idempotencyKey}}"}],"body":{"mode":"raw","raw":"{{orderBody}}","options":{"raw":{"language":"json"}}}},
+          "event":[{"listen":"prerequest","script":{"exec":["if (!pm.collectionVariables.get('orderBody') || !pm.collectionVariables.get('idempotencyKey')) { throw new Error('Chạy bước 1 để chuẩn bị đơn trước.'); }"]}},{"listen":"test","script":{"exec":["pm.test('Đặt hàng thành công', () => { pm.response.to.have.status(201); const d=pm.response.json(); pm.expect(d.orderId).to.be.a('string'); pm.collectionVariables.set('orderId',d.orderId); pm.collectionVariables.set('restaurantId',d.restaurantId); });"]}}]
+        },
+        {
+          "name":"3. Xóa giỏ sau khi đặt thành công",
+          "request":{"method":"DELETE","url":"{{baseUrl}}/api/v1/customers/me/cart"},
+          "event":[{"listen":"prerequest","script":{"exec":["if (!pm.collectionVariables.get('orderId')) { throw new Error('Chưa có đơn thành công: không xóa giỏ.'); }"]}},{"listen":"test","script":{"exec":["pm.test('Đã xóa giỏ', () => pm.response.to.have.status(204));"]}}]
+        }
+      ]
+    },
+    {
+      "name":"04 — Restaurant: xử lý đơn, tài xế dùng app",
+      "auth":{"type":"bearer","bearer":[{"key":"token","value":"{{merchantToken}}","type":"string"}]},
+      "item":[
+        {"name":"Danh sách đơn chờ nhận","request":{"method":"GET","url":"{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders?status=PENDING&page=0&size=20"}},
+        {"name":"Chi tiết đơn hiện tại","request":{"method":"GET","url":"{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId}}"}},
+        {
+          "name":"1. Quán nhận đơn — bắt đầu tìm tài xế",
+          "request":{"method":"POST","url":"{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId}}/accept","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"estimatedPreparationMinutes\":10}","options":{"raw":{"language":"json"}}},"description":"Tài xế vào ca trên app, cập nhật GPS ở gần quán. Sau khi quán nhận đơn, dispatcher gửi đề nghị. Nhận đề nghị trên app, không cần login driver trong Postman."},
+          "event":[{"listen":"test","script":{"exec":["pm.test('Quán đã nhận đơn', () => pm.response.to.have.status(200));"]}}]
+        },
+        {
+          "name":"2. Món đã sẵn sàng — cho phép tài xế lấy hàng",
+          "request":{"method":"POST","url":"{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId}}/ready","description":"Gửi sau khi quán nhận đơn và chuẩn bị xong. Tài xế không thể xác nhận lấy hàng nếu quán chưa READY."},
+          "event":[{"listen":"test","script":{"exec":["pm.test('Món sẵn sàng', () => pm.response.to.have.status(200));"]}}]
+        }
+      ]
+    },
+    {
+      "name":"05 — Theo dõi và thao tác tùy chọn (KHÔNG Run cả folder)",
+      "item":[
+        {"name":"Customer: chi tiết đơn","request":{"method":"GET","url":"{{baseUrl}}/api/v1/customers/me/orders/{{orderId}}","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{customerToken}}","type":"string"}]}}},
+        {"name":"Customer: theo dõi giao hàng","request":{"method":"GET","url":"{{baseUrl}}/api/v1/customers/me/orders/{{orderId}}/tracking","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{customerToken}}","type":"string"}]}}},
+        {"name":"Customer: lịch sử đơn","request":{"method":"GET","url":"{{baseUrl}}/api/v1/customers/me/orders?page=0&size=20","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{customerToken}}","type":"string"}]}}},
+        {"name":"Customer: hủy đơn PENDING","request":{"method":"POST","url":"{{baseUrl}}/api/v1/customers/me/orders/{{orderId}}/cancel","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{customerToken}}","type":"string"}]},"header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"reason\":\"Đặt nhầm\"}","options":{"raw":{"language":"json"}}}}},
+        {"name":"Restaurant: từ chối đơn PENDING","request":{"method":"POST","url":"{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId}}/reject","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{merchantToken}}","type":"string"}]},"header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"reason\":\"Hết nguyên liệu\"}","options":{"raw":{"language":"json"}}}}},
+        {"name":"Customer: xóa một món khỏi giỏ","request":{"method":"DELETE","url":"{{baseUrl}}/api/v1/customers/me/cart/items/{{menuItemId}}","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{customerToken}}","type":"string"}]}}},
+        {"name":"Customer: xóa giỏ thủ công / đổi quán","request":{"method":"DELETE","url":"{{baseUrl}}/api/v1/customers/me/cart","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{customerToken}}","type":"string"}]}}}
+      ]
+    }
+  ]
+}

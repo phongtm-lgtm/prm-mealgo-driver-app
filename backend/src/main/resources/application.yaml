@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: mealgo-backend
+  profiles:
+    default: local
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: ${DDL_AUTO:update}
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+server:
+  port: 8080
+  error:
+    include-message: never
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: never
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    issuer: mealgo
+    ttl-seconds: 3600
+  seed:
+    enabled: ${APP_SEED_ENABLED:false}
+  storage:
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_ACCESS_KEY:mealgo_admin}
+    secret-key: ${MINIO_SECRET_KEY:mealgo_minio_local_password}
+    bucket: delivery-evidence
+  delivery:
+    offer-seconds: 60
+    location-max-age-seconds: 30
+    radius-meters: 200
+    max-accuracy-meters: 50

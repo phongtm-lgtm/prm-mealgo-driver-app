@@ -1,0 +1,149 @@
+### IntelliJ HTTP Client / VS Code REST Client
+@baseUrl = http://localhost:8080
+@customerToken = REPLACE_CUSTOMER_TOKEN
+@merchantToken = REPLACE_MERCHANT_TOKEN
+@driverToken = REPLACE_DRIVER_TOKEN
+@restaurantId = REPLACE_RESTAURANT_UUID
+@menuItemId = REPLACE_MENU_ITEM_UUID
+@orderId = REPLACE_ORDER_UUID
+@assignmentId = REPLACE_ASSIGNMENT_UUID
+@deliveryId = REPLACE_DELIVERY_UUID
+@sessionId = REPLACE_SESSION_UUID
+
+### Health
+GET {{baseUrl}}/actuator/health
+
+### Customer login (copy accessToken into customerToken)
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{"phoneNumber":"0900000003","password":"Mealgo123!"}
+
+### Merchant login
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{"phoneNumber":"0900000002","password":"Mealgo123!"}
+
+### Driver login
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{"phoneNumber":"0900000001","password":"Mealgo123!"}
+
+### View customer cart
+GET {{baseUrl}}/api/v1/customers/me/cart
+Authorization: Bearer {{customerToken}}
+
+### Add to cart (adds quantity to existing item)
+POST {{baseUrl}}/api/v1/customers/me/cart/items
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{"menuItemId":"{{menuItemId}}","quantity":2,"note":"Khong cay"}
+
+### Update cart item
+PUT {{baseUrl}}/api/v1/customers/me/cart/items/{{menuItemId}}
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{"quantity":1,"note":"Khong cay"}
+
+### Remove cart item
+DELETE {{baseUrl}}/api/v1/customers/me/cart/items/{{menuItemId}}
+Authorization: Bearer {{customerToken}}
+
+### Clear cart (only after order succeeds, or explicitly discarding cart)
+DELETE {{baseUrl}}/api/v1/customers/me/cart
+Authorization: Bearer {{customerToken}}
+
+### Place order (change key to create another order)
+POST {{baseUrl}}/api/v1/customers/me/orders
+Authorization: Bearer {{customerToken}}
+Idempotency-Key: manual-order-001
+Content-Type: application/json
+
+{
+  "restaurantId": "{{restaurantId}}",
+  "items": [{"menuItemId":"{{menuItemId}}","quantity":2,"note":"Khong cay"}],
+  "recipient": {"name":"Nguyen Van A","phone":"0901234567"},
+  "dropoff": {"address":"Delivery address","latitude":10.78,"longitude":106.70},
+  "deliveryNote":"Goi truoc khi giao",
+  "paymentMethod":"COD"
+}
+
+### Merchant list
+GET {{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders?status=PENDING
+Authorization: Bearer {{merchantToken}}
+
+### Accept
+POST {{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId}}/accept
+Authorization: Bearer {{merchantToken}}
+Content-Type: application/json
+
+{"estimatedPreparationMinutes":20}
+
+### Driver online; dispatcher will offer within about 5 seconds
+PUT {{baseUrl}}/api/v1/drivers/me/online-status
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{"online":true}
+
+### Offers
+GET {{baseUrl}}/api/v1/drivers/me/offers
+Authorization: Bearer {{driverToken}}
+
+### Accept offer
+POST {{baseUrl}}/api/v1/drivers/me/offers/{{assignmentId}}/accept
+Authorization: Bearer {{driverToken}}
+
+### Current delivery
+GET {{baseUrl}}/api/v1/drivers/me/deliveries/current
+Authorization: Bearer {{driverToken}}
+
+### Start session
+POST {{baseUrl}}/api/v1/drivers/me/tracking-session
+Authorization: Bearer {{driverToken}}
+
+### GPS at demo restaurant; replace recordedAt with CURRENT UTC time
+PUT {{baseUrl}}/api/v1/drivers/me/location
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{"trackingSessionId":"{{sessionId}}","sequence":1,"latitude":10.7626,"longitude":106.6823,"accuracyMeters":10,"recordedAt":"REPLACE_CURRENT_UTC_INSTANT"}
+
+### Arrive at restaurant
+POST {{baseUrl}}/api/v1/drivers/me/deliveries/{{deliveryId}}/arrive-at-pickup
+Authorization: Bearer {{driverToken}}
+
+### Restaurant ready
+POST {{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId}}/ready
+Authorization: Bearer {{merchantToken}}
+
+### Pick up
+POST {{baseUrl}}/api/v1/drivers/me/deliveries/{{deliveryId}}/confirm-pickup
+Authorization: Bearer {{driverToken}}
+
+### GPS at customer; update timestamp
+PUT {{baseUrl}}/api/v1/drivers/me/location
+Authorization: Bearer {{driverToken}}
+Content-Type: application/json
+
+{"trackingSessionId":"{{sessionId}}","sequence":2,"latitude":10.78,"longitude":106.70,"accuracyMeters":10,"recordedAt":"REPLACE_CURRENT_UTC_INSTANT"}
+
+### Arrive at customer
+POST {{baseUrl}}/api/v1/drivers/me/deliveries/{{deliveryId}}/arrive-at-dropoff
+Authorization: Bearer {{driverToken}}
+
+### Confirm delivery / COD collected
+POST {{baseUrl}}/api/v1/drivers/me/deliveries/{{deliveryId}}/confirm-delivery
+Authorization: Bearer {{driverToken}}
+
+### Customer tracking
+GET {{baseUrl}}/api/v1/customers/me/orders/{{orderId}}/tracking
+Authorization: Bearer {{customerToken}}
+
+### Driver history
+GET {{baseUrl}}/api/v1/drivers/me/deliveries/history
+Authorization: Bearer {{driverToken}}
