@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-@SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("test")
+@SpringBootTest(properties="app.driver.earning-per-delivery=15000") @AutoConfigureMockMvc @ActiveProfiles("test")
 class OrderDeliveryFlowTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
@@ -95,6 +95,26 @@ class OrderDeliveryFlowTest {
         call(post("/api/v1/customers/me/orders").content("{}"),customer,400);
     }
 
+    @Test void driverAccountSettingsAndAuthorization() throws Exception {
+        String driver=login("driver.demo"), customer=login("customer.demo");
+        String base="/api/v1/drivers/me";
+        for(String endpoint:List.of("/order-settings","/app-settings","/wallet","/earnings","/notifications","/wallet/transactions")) {
+            call(get(base+endpoint),null,401); call(get(base+endpoint),customer,403); call(get(base+endpoint),driver,200);
+        }
+        String settings="{\"autoAcceptEnabled\":true,\"maxDeliveryDistanceKm\":20,\"maxItemQuantity\":10,\"maxRestaurantAdvanceAmount\":200000}";
+        call(put(base+"/order-settings").content(settings),driver,200);
+        assertEquals(20,call(get(base+"/order-settings"),driver,200).get("maxDeliveryDistanceKm").asInt());
+        call(put(base+"/order-settings").content("{}"),driver,400);
+        call(put(base+"/app-settings").content("{\"inAppNotificationsEnabled\":false}"),driver,200);
+        assertFalse(call(get(base+"/app-settings"),driver,200).get("inAppNotificationsEnabled").asBoolean());
+        call(put(base+"/app-settings").content("{\"inAppNotificationsEnabled\":true}"),driver,200);
+        call(get(base+"/notifications?size=101"),driver,400);
+        call(get(base+"/wallet/transactions/"+UUID.randomUUID()),driver,404);
+        call(patch(base+"/notifications/"+UUID.randomUUID()+"/read"),driver,404);
+        call(get(base+"/earnings?period=WEEK&date=2026-11-03"),driver,200);
+        call(get(base+"/earnings?period=INVALID"),driver,400);
+    }
+
     @Test void customerCartOwnershipValidationAndPricing() throws Exception {
         String customer=login("customer.demo");
         String path="/api/v1/customers/me/cart";
@@ -156,6 +176,19 @@ class OrderDeliveryFlowTest {
         call(post(path+"/arrive-at-dropoff"),driver,200);
         call(post(path+"/confirm-delivery"),driver,200);
         call(post(path+"/confirm-delivery"),driver,200);
+        assertEquals(15000,call(get("/api/v1/drivers/me/wallet"),driver,200).get("balance").asInt());
+        var tx=call(get("/api/v1/drivers/me/wallet/transactions"),driver,200);
+        assertEquals(1,tx.get("items").size());
+        assertEquals(delivery,tx.get("items").get(0).get("deliveryId").asText());
+        call(get("/api/v1/drivers/me/deliveries/history/"+delivery),driver,200);
+        call(get("/api/v1/drivers/me/deliveries/history/"+delivery),customer,403);
+        var notices=call(get("/api/v1/drivers/me/notifications"),driver,200);
+        assertEquals(1,notices.get("items").size());
+        String noticeId=notices.get("items").get(0).get("id").asText();
+        call(patch("/api/v1/drivers/me/notifications/"+noticeId+"/read"),driver,200);
+        assertEquals(0,call(get("/api/v1/drivers/me/notifications/unread-count"),driver,200).get("count").asInt());
+        call(patch("/api/v1/drivers/me/notifications/read-all"),driver,204);
+        assertEquals(15000,call(get("/api/v1/drivers/me/earnings?period=DAY"),driver,200).get("totalEarnings").asInt());
         call(get("/api/v1/drivers/me/deliveries/current"),driver,204);
         var tracking=call(get("/api/v1/customers/me/orders/"+id+"/tracking"),customer,200);
         assertEquals("DELIVERED",tracking.get("orderStatus").asText()); assertTrue(tracking.get("driverLocation").isNull());
@@ -175,6 +208,9 @@ class OrderDeliveryFlowTest {
         call(post(secondPath+"/arrive-at-pickup"),driver,200);
         call(post(secondMerchant+"/ready"),merchant,200);
         call(post(secondPath+"/confirm-pickup"),driver,200);
+        mvc.perform(multipart(secondPath+"/incident").param("assignmentId",secondAssignment)
+            .param("requestId",UUID.randomUUID().toString()).param("reason","PERSONAL")
+            .header("Authorization","Bearer "+driver)).andExpect(status().isConflict());
         location(driver,session,4,10.78,106.70);
         call(post(secondPath+"/arrive-at-dropoff"),driver,200);
         var bytes=new ByteArrayOutputStream(); ImageIO.write(new BufferedImage(2,2,BufferedImage.TYPE_INT_RGB),"png",bytes);
@@ -188,6 +224,40 @@ class OrderDeliveryFlowTest {
         mvc.perform(get(secondPath+"/failure-report/evidence").header("Authorization","Bearer "+driver))
                 .andExpect(status().isOk()).andExpect(content().contentType("image/png"));
         assertEquals("FAILED",call(get("/api/v1/customers/me/orders/"+second),customer,200).get("status").asText());
+        assertEquals(15000,call(get("/api/v1/drivers/me/wallet"),driver,200).get("balance").asInt());
+    }
+    @Test @org.springframework.transaction.annotation.Transactional void incidentReleaseAndClosure() throws Exception {
+        String driver=login("driver.demo"), merchant=login("merchant.demo"), customer=login("customer.demo");
+        var restaurant=restaurants.findAll().getFirst(); var item=menu.findAll().getFirst();
+        var body=Map.of("restaurantId",restaurant.getId(),"items",List.of(Map.of("menuItemId",item.getId(),"quantity",1)),
+            "recipient",Map.of("name","Customer","phone","0901234567"),"dropoff",Map.of("address","Address","latitude",10.78,"longitude",106.70),"paymentMethod","COD");
+        call(put("/api/v1/drivers/me/online-status").content("{\"online\":true}"),driver,200);
+        String session=call(post("/api/v1/drivers/me/tracking-session"),driver,201).get("trackingSessionId").asText();
+        location(driver,session,1,10.7626,106.6823);
+        for(String reason:List.of("PERSONAL","RESTAURANT_DELAY","RESTAURANT_CLOSED")) {
+            String order=call(post("/api/v1/customers/me/orders").header("Idempotency-Key",UUID.randomUUID().toString()).content(json.writeValueAsString(body)),customer,201).get("orderId").asText();
+            call(post("/api/v1/merchant/restaurants/"+restaurant.getId()+"/orders/"+order+"/accept").content("{\"estimatedPreparationMinutes\":10}"),merchant,200);
+            dispatch.dispatch();
+            String assignment=call(get("/api/v1/drivers/me/offers"),driver,200).get(0).get("assignmentId").asText();
+            call(post("/api/v1/drivers/me/offers/"+assignment+"/accept"),driver,200);
+            String delivery=call(get("/api/v1/drivers/me/deliveries/current"),driver,200).get("deliveryId").asText();
+            String path="/api/v1/drivers/me/deliveries/"+delivery+"/incident", key=UUID.randomUUID().toString();
+            if(reason.equals("RESTAURANT_CLOSED")) mvc.perform(multipart(path).param("assignmentId",assignment).param("requestId",key).param("reason",reason)
+                .header("Authorization","Bearer "+driver)).andExpect(status().isBadRequest());
+            var image=new ByteArrayOutputStream(); ImageIO.write(new BufferedImage(2,2,BufferedImage.TYPE_INT_RGB),"png",image);
+            for(int retry=0;retry<2;retry++) {
+                var request=multipart(path);
+                request.param("assignmentId",assignment).param("requestId",key).param("reason",reason);
+                if(reason.equals("RESTAURANT_CLOSED")) request.file(new MockMultipartFile("image","proof.png","image/png",image.toByteArray()));
+                mvc.perform(request.header("Authorization","Bearer "+driver)).andExpect(status().isOk())
+                    .andExpect(jsonPath("$.outcome").value(reason.equals("RESTAURANT_CLOSED")?"CANCELLED":"PENDING_REASSIGNMENT"));
+            }
+            call(get("/api/v1/drivers/me/deliveries/current"),driver,204);
+            assertEquals(reason.equals("RESTAURANT_CLOSED")?"CANCELLED":"PREPARING",call(get("/api/v1/customers/me/orders/"+order),customer,200).get("status").asText());
+            if(reason.equals("RESTAURANT_CLOSED")) call(get("/api/v1/drivers/me/deliveries/history/"+delivery),driver,200);
+        }
+        assertEquals(3,call(get("/api/v1/drivers/me/deliveries/incidents"),driver,200).size());
+        call(get("/api/v1/drivers/me/deliveries/incidents"),customer,403);
     }
     private String login(String name) throws Exception {
         String phone = switch (name) {

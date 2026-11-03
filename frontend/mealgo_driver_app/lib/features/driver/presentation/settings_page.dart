@@ -24,7 +24,7 @@ class _SettingsPageState extends State<SettingsPage> {
       padding: const EdgeInsets.all(16),
       children: [
         const DemoNotice(
-          text: 'Cài đặt chỉ áp dụng trong phiên hiện tại, chưa được lưu lên máy chủ.',
+          text: 'Cài đặt được lưu trên máy chủ. Khoảng cách tính đường chim bay từ quán đến khách.',
         ),
         const SizedBox(height: 16),
         SectionCard(
@@ -33,12 +33,16 @@ class _SettingsPageState extends State<SettingsPage> {
             children: [
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('Bật đề nghị nhận đơn'),
+                title: const Text('Tự động nhận đơn'),
                 subtitle: const Text(
-                  'Chưa hỗ trợ. Đề nghị từ máy chủ hiển thị ở trang chủ.',
+                  'Chỉ lưu tùy chọn; hiện vẫn cần xác nhận nhận đơn thủ công.',
                 ),
                 value: _draft.autoAccept,
-                onChanged: null,
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(
+                        () => _draft = _draft.copyWith(autoAccept: v),
+                      ),
               ),
               const Text(
                 'Trạng thái và thời hạn đề nghị do máy chủ quyết định.',
@@ -51,12 +55,12 @@ class _SettingsPageState extends State<SettingsPage> {
           title: 'Khoảng cách giao hàng',
           child: Column(
             children: [
-              Text('Tối đa ${_draft.maxDistance.toStringAsFixed(0)} km'),
+              Text('Tối đa ${_draft.maxDistance.toStringAsFixed(1)} km'),
               Slider(
                 value: _draft.maxDistance,
-                min: 1,
-                max: 10,
-                divisions: 9,
+                min: 0.1,
+                max: 100,
+                divisions: 999,
                 label: '${_draft.maxDistance.round()} km',
                 onChanged: _saving
                     ? null
@@ -76,11 +80,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 decoration: const InputDecoration(
                   labelText: 'Số lượng món tối đa',
                 ),
-                items: [1, 3, 5, 10]
-                    .map(
-                      (v) => DropdownMenuItem(value: v, child: Text('$v món')),
-                    )
-                    .toList(),
+                items:
+                    ({1, 3, 5, 10, 20, 50, 100, 5000, _draft.maxItems}.toList()
+                          ..sort())
+                        .map(
+                          (v) =>
+                              DropdownMenuItem(value: v, child: Text('$v món')),
+                        )
+                        .toList(),
                 onChanged: _saving
                     ? null
                     : (v) =>
@@ -92,11 +99,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 decoration: const InputDecoration(
                   labelText: 'Tiền trả quán tối đa',
                 ),
-                items: [0, 100000, 200000, 500000]
-                    .map(
-                      (v) => DropdownMenuItem(value: v, child: Text(money(v))),
-                    )
-                    .toList(),
+                items:
+                    ({0, 100000, 200000, 500000, _draft.maxAdvance}.toList()
+                          ..sort())
+                        .map(
+                          (v) =>
+                              DropdownMenuItem(value: v, child: Text(money(v))),
+                        )
+                        .toList(),
                 onChanged: _saving
                     ? null
                     : (v) => setState(
@@ -105,7 +115,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Giới hạn số món và tiền ứng chưa được máy chủ hỗ trợ.',
+                'Máy chủ lọc tổng số phần ăn và khoảng cách. Luồng COD hiện không cần ứng tiền quán (0đ).',
                 style: TextStyle(fontSize: 12),
               ),
             ],
@@ -135,8 +145,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     SnackBar(
                       content: Text(
                         ok
-                            ? 'Đã áp dụng cài đặt cho phiên hiện tại'
-                            : 'Không thể lưu. Vui lòng thử lại.',
+                            ? 'Đã lưu cài đặt lên máy chủ'
+                            : (widget.controller.error ??
+                                  'Không thể lưu. Vui lòng thử lại. Có thể một phần cài đặt đã được lưu.'),
                       ),
                     ),
                   );

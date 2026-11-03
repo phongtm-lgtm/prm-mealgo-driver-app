@@ -33,12 +33,14 @@ public class DeliveryService {
     private final DeliveryRepository deliveries;
     private final AssignmentRepository assignments;
     private final FailureReportRepository reports;
+    private final DeliveryIncidentRepository incidents;
     private final DriverService drivers;
     private final OrderService orders;
     private final OrderMapper orderMapper;
     private final DeliveryMapper mapper;
     private final ProximityService proximity;
     private final EvidenceStorage storage;
+    private final com.mealgo.monolith.driver.service.DriverAccountService accounts;
 
     @Transactional public void create(Order order) {
         if (deliveries.findByOrderId(order.getId()).isEmpty()) {
@@ -77,8 +79,14 @@ public class DeliveryService {
     @Transactional(readOnly=true) public PageResponse<Current> history(int page,int size) {
         PageResponse.validate(page,size);
         return PageResponse.from(deliveries.findByDriverIdAndStatusIn(drivers.myDriver().getId(),
-                List.of(DeliveryStatus.DELIVERED,DeliveryStatus.FAILED),PageRequest.of(page,size,Sort.by("updatedAt").descending()))
+                List.of(DeliveryStatus.DELIVERED,DeliveryStatus.FAILED,DeliveryStatus.CANCELLED),PageRequest.of(page,size,Sort.by("updatedAt").descending()))
                 .map(d -> mapper.current(d,orders.get(d.getOrderId()))));
+    }
+    @Transactional(readOnly=true) public Current historyDetail(UUID id) {
+        var d=delivery(id);
+        if(!drivers.myDriver().getId().equals(d.getDriverId()) || !List.of(DeliveryStatus.DELIVERED,DeliveryStatus.FAILED,DeliveryStatus.CANCELLED).contains(d.getStatus()))
+            throw ApiException.notFound("Delivery history not found");
+        return mapper.current(d,orders.get(d.getOrderId()));
     }
     @Transactional public Current action(UUID id,String action) {
         var driver = drivers.lockMine(); var d = lockOwned(id,driver);
@@ -106,6 +114,7 @@ public class DeliveryService {
                 d.setStatus(DeliveryStatus.DELIVERED); d.setDeliveredAt(Instant.now()); o.setStatus(OrderStatus.DELIVERED);
                 var a = assignments.findById(d.getAssignmentId()).orElseThrow();
                 a.setStatus(AssignmentStatus.COMPLETED);
+                accounts.completed(driver,d.getId(),d.getDeliveredAt());
             }
             default -> throw ApiException.notFound("Unknown delivery action");
         }
@@ -137,6 +146,59 @@ public class DeliveryService {
         return mapper.current(d,o);
     }
     @Transactional(readOnly=true) public Report report(UUID id) { return mapper.report(ownedReport(id)); }
+    public record IncidentResult(UUID id,UUID deliveryId,UUID assignmentId,IncidentReason reason,String outcome,String note,Instant createdAt) {}
+    private IncidentResult incidentResult(DeliveryIncident i) {
+        return new IncidentResult(i.getId(),i.getDeliveryId(),i.getAssignmentId(),i.getReason(),
+            i.getReason()==IncidentReason.RESTAURANT_CLOSED?"CANCELLED":"PENDING_REASSIGNMENT",i.getNote(),i.getCreatedAt());
+    }
+    @Transactional(readOnly=true) public List<IncidentResult> incidents() {
+        return incidents.findByDriverIdOrderByCreatedAtDesc(drivers.myDriver().getId()).stream().map(this::incidentResult).toList();
+    }
+    @Transactional public IncidentResult incident(UUID id,UUID assignmentId,UUID requestId,IncidentReason reason,String note,MultipartFile image) {
+        if(note!=null && note.length()>1000) throw ApiException.badRequest("Note maximum 1000 characters");
+        if(reason==null) throw ApiException.badRequest("Reason required");
+        var validated=reason==IncidentReason.RESTAURANT_CLOSED?validateImageRequired(image):null;
+        if(reason!=IncidentReason.RESTAURANT_CLOSED && image!=null && !image.isEmpty()) throw ApiException.badRequest("Evidence only accepted for restaurant closure");
+        var driver=drivers.lockMine();
+        // Check immutable receipt before delivery ownership, which changes on reassignment.
+        var existing=incidents.findByAssignmentId(assignmentId);
+        if(existing.isPresent()) {
+            var i=existing.get();
+            if(!i.getDriverId().equals(driver.getId()) || !i.getDeliveryId().equals(id)) throw ApiException.notFound("Incident not found");
+            if(!i.getRequestId().equals(requestId) || i.getReason()!=reason || !Objects.equals(note,i.getNote())
+                || !Objects.equals(i.getSha256(),validated==null?null:validated.hash())) throw ApiException.conflict("A different incident already exists");
+            return incidentResult(i);
+        }
+        var d=lockOwned(id,driver);
+        if(!assignmentId.equals(d.getAssignmentId())) throw ApiException.notFound("Assignment not found");
+        if(!List.of(DeliveryStatus.ASSIGNED,DeliveryStatus.AT_PICKUP).contains(d.getStatus())) throw ApiException.conflict("Cannot release or cancel after pickup");
+        var o=orders.lock(d.getOrderId());
+        if(!List.of(OrderStatus.PREPARING,OrderStatus.READY).contains(o.getStatus())) throw ApiException.conflict("Order is no longer eligible");
+        if(reason==IncidentReason.RESTAURANT_CLOSED) proximity.requireNear(driver,o.getPickupLatitude(),o.getPickupLongitude());
+        var i=new DeliveryIncident(); i.setDriverId(driver.getId()); i.setDeliveryId(id); i.setAssignmentId(assignmentId);
+        i.setRequestId(requestId); i.setReason(reason); i.setNote(note);
+        var a=assignments.findById(assignmentId).orElseThrow();
+        if(validated!=null) {
+            i.setSha256(validated.hash()); i.setContentType(validated.contentType());
+            i.setObjectKey("incidents/"+id+"/"+requestId+"/"+validated.hash());
+            storage.put(i.getObjectKey(),validated.bytes(),validated.contentType());
+            d.setStatus(DeliveryStatus.CANCELLED); o.setStatus(OrderStatus.CANCELLED); a.setStatus(AssignmentStatus.CANCELLED);
+        } else {
+            a.setStatus(AssignmentStatus.RELEASED); d.setStatus(DeliveryStatus.PENDING_ASSIGNMENT);
+            d.setDriverId(null); d.setAssignmentId(null);
+        }
+        d.setUpdatedAt(Instant.now()); o.setUpdatedAt(Instant.now()); incidents.save(i);
+        return incidentResult(i);
+    }
+    private ValidatedImage validateImageRequired(MultipartFile image) {
+        if(image==null) throw ApiException.badRequest("Restaurant closure requires image evidence");
+        return validateImage(image);
+    }
+    @Transactional(readOnly=true) public EvidenceContent incidentEvidence(UUID id) {
+        var i=incidents.findByIdAndDriverId(id,drivers.myDriver().getId()).orElseThrow(()->ApiException.notFound("Incident not found"));
+        if(i.getObjectKey()==null) throw ApiException.notFound("Evidence not found");
+        return new EvidenceContent(storage.get(i.getObjectKey()),i.getContentType());
+    }
     @Transactional(readOnly=true) public EvidenceContent evidence(UUID id) {
         var r = ownedReport(id); return new EvidenceContent(storage.get(r.getObjectKey()),r.getContentType());
     }

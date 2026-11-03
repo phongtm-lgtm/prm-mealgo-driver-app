@@ -100,6 +100,40 @@ class ApiClient {
 
   void close() => client.close();
 
+  Future<Map<String, dynamic>> deliveryIncident(
+    String deliveryId,
+    Map<String, String> fields,
+    List<int>? bytes,
+    String filename,
+  ) async {
+    final request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/api/v1/drivers/me/deliveries/$deliveryId/incident'),
+    );
+    request.headers['Authorization'] = 'Bearer $token';
+    request.fields.addAll(fields);
+    if (bytes != null)
+      request.files.add(
+        http.MultipartFile.fromBytes('image', bytes, filename: filename),
+      );
+    try {
+      return Map<String, dynamic>.from(
+        decode(
+          await http.Response.fromStream(
+            await client.send(request).timeout(const Duration(seconds: 40)),
+          ),
+        ) as Map,
+      );
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw ApiException(
+        0,
+        'Không gửi được sự cố. Giữ nguyên nội dung và thử lại.',
+      );
+    }
+  }
+
   Future<void> verifyFace(List<int> bytes, String filename) async {
     final request = http.MultipartRequest(
       'POST',

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../../app/app_dependencies.dart';
 import '../../../app/backend_repositories.dart';
 import '../../account/domain/account_repository.dart';
+import '../../account/presentation/account_state.dart';
 import '../../delivery/domain/delivery.dart';
 import '../../driver/domain/driver.dart';
 
@@ -12,6 +13,10 @@ import '../../driver/domain/driver.dart';
 class DriverController extends ChangeNotifier {
   DriverController(this._dependencies);
   final AppDependencies _dependencies;
+  late final AccountState? account =
+      _dependencies.account is AccountDataRepository
+      ? AccountState(_dependencies.account as AccountDataRepository)
+      : null;
 
   DriverProfile? profile;
   AccountSummary? summary;
@@ -26,6 +31,7 @@ class DriverController extends ChangeNotifier {
   List<DeliveryOrder> get history => List.unmodifiable(_history);
   DeliveryOrder? activeOrder;
   DeliveryOrder? selectedOrder;
+  Map<String, dynamic>? lastIncident;
   bool online = false;
   bool busy = false;
   bool initialized = false;
@@ -162,6 +168,7 @@ class DriverController extends ChangeNotifier {
       completedToday++;
       earnedToday += updated.fee;
       _finish(updated);
+      account?.invalidate();
     } else {
       activeOrder = updated;
     }
@@ -179,8 +186,36 @@ class DriverController extends ChangeNotifier {
     _finish(await _dependencies.delivery.reject(order.id, reason));
   });
 
+  Future<bool> submitIncident(
+    String deliveryId,
+    String reason,
+    String note,
+    String requestId,
+    List<int>? bytes,
+    String filename,
+  ) => _run(() async {
+    if (activeOrder != null && activeOrder!.id != deliveryId)
+      throw StateError('Chuyến hiện tại đã thay đổi. Hãy làm mới.');
+    final repository = _dependencies.delivery;
+    if (repository is! DeliveryIncidentRepository)
+      throw StateError('Chưa kết nối API xử lý sự cố.');
+    lastIncident = await (repository as DeliveryIncidentRepository)
+        .submitIncident(deliveryId, reason, note, requestId, bytes, filename);
+    activeOrder = null;
+    selectedOrder = null;
+    showingActive = false;
+    account?.invalidate();
+  });
+
   Future<bool> reportFailure(DeliveryReport report) => _run(() async {
     _finish(await _dependencies.delivery.report(report));
+    account?.invalidate();
+  });
+
+  Future<bool> updateProfile(String name, String phone) => _run(() async {
+    final repository = _dependencies.account as AccountDataRepository;
+    await repository.updateProfile(name, phone);
+    profile = await _dependencies.driver.getProfile();
   });
 
   Future<bool> saveSettings(DriverSettings value) => _run(() async {
@@ -248,6 +283,7 @@ class DriverController extends ChangeNotifier {
 
   @override
   void dispose() {
+    account?.dispose();
     _pollTimer?.cancel();
     _disposed = true;
     _clearOffer();

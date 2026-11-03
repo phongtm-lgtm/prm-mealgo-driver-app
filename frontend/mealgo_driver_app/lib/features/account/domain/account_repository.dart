@@ -23,3 +23,16 @@ class AccountSummary {
 abstract interface class AccountRepository {
   Future<AccountSummary> getSummary();
 }
+
+/// Persisted account data. All identifiers are scoped to the authenticated driver.
+abstract interface class AccountDataRepository {
+  Future<Map<String, dynamic>> wallet();
+  Future<Map<String, dynamic>> earnings(String period, String date);
+  Future<Map<String, dynamic>> accountList(String resource, int page);
+  Future<Map<String, dynamic>> accountDetail(String resource, String id);
+  Future<int> unreadCount();
+  Future<void> markRead(String? id);
+  Future<DriverProfileData> updateProfile(String name, String phone);
+}
+
+typedef DriverProfileData = Map<String, dynamic>;

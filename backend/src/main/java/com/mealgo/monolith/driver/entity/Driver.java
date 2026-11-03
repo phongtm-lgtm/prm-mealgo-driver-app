@@ -21,4 +21,10 @@ public class Driver {
     private Double longitude;
     private Double accuracyMeters;
     private Instant recordedAt;
+    @Column(nullable=false,columnDefinition="boolean default false")
+    private boolean autoAcceptEnabled;
+    private Double maxDeliveryDistanceKm;
+    private Integer maxItemQuantity;
+    private java.math.BigDecimal maxRestaurantAdvanceAmount;
+    private Boolean inAppNotificationsEnabled;
 }

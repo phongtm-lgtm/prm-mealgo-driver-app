@@ -1,0 +1,25 @@
+{
+  "info": {"name":"MealGo — Driver account APIs","schema":"https://schema.getpostman.com/json/collection/v2.1.0/collection.json","description":"Login trước; token tự lưu. PUT thay cấu hình thật. Tiền công mặc định chưa cấu hình, xem DRIVER_ACCOUNT_API.md."},
+  "variable": [{"key":"baseUrl","value":"http://localhost:8080/api/v1"},{"key":"driverToken","value":""},{"key":"notificationId","value":"REPLACE_UUID"},{"key":"transactionId","value":"REPLACE_UUID"},{"key":"deliveryId","value":"REPLACE_UUID"}],
+  "auth":{"type":"bearer","bearer":[{"key":"token","value":"{{driverToken}}","type":"string"}]},
+  "item": [
+    {"name":"Login driver","request":{"method":"POST","url":"{{baseUrl}}/auth/login","auth":{"type":"noauth"},"header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"phoneNumber\":\"0900000001\",\"password\":\"Mealgo123!\"}"}},"event":[{"listen":"test","script":{"exec":["pm.test('Driver login',()=>{pm.response.to.have.status(200);pm.expect(pm.response.json().role).to.eql('DRIVER');pm.collectionVariables.set('driverToken',pm.response.json().accessToken);});"]}}]},
+    {"name":"Profile","request":{"method":"GET","url":"{{baseUrl}}/drivers/me"}},
+    {"name":"Read order settings","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/order-settings"}},
+    {"name":"Save order settings","request":{"method":"PUT","url":"{{baseUrl}}/drivers/me/order-settings","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"autoAcceptEnabled\":false,\"maxDeliveryDistanceKm\":5,\"maxItemQuantity\":10,\"maxRestaurantAdvanceAmount\":200000}"}}},
+    {"name":"Read app settings","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/app-settings"}},
+    {"name":"Save app settings","request":{"method":"PUT","url":"{{baseUrl}}/drivers/me/app-settings","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"inAppNotificationsEnabled\":true}"}}},
+    {"name":"Daily earnings","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/earnings?period=DAY"}},
+    {"name":"Weekly earnings","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/earnings?period=WEEK"}},
+    {"name":"Monthly earnings","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/earnings?period=MONTH"}},
+    {"name":"Wallet","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/wallet"}},
+    {"name":"Transactions","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/wallet/transactions?page=0&size=20"}},
+    {"name":"Transaction detail","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/wallet/transactions/{{transactionId}}"}},
+    {"name":"Notifications","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/notifications?page=0&size=20"}},
+    {"name":"Unread count","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/notifications/unread-count"}},
+    {"name":"Read notification","request":{"method":"PATCH","url":"{{baseUrl}}/drivers/me/notifications/{{notificationId}}/read"}},
+    {"name":"Read all notifications","request":{"method":"PATCH","url":"{{baseUrl}}/drivers/me/notifications/read-all"}},
+    {"name":"Delivery history","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/deliveries/history?page=0&size=20"}},
+    {"name":"History detail","request":{"method":"GET","url":"{{baseUrl}}/drivers/me/deliveries/history/{{deliveryId}}"}}
+  ]
+}

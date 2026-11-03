@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import 'dart:typed_data';
+
 import 'package:image_picker/image_picker.dart';
 
 import '../../../driver_store.dart';
@@ -34,126 +37,147 @@ class _ReportPageState extends State<ReportPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Báo cáo giao thất bại')),
-    body: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const DemoNotice(
-          text: 'Báo cáo được gửi lên máy chủ với ảnh bằng chứng thật.',
-        ),
-        const SizedBox(height: 16),
-        SectionCard(
-          title: 'Điều kiện gửi báo cáo',
-          child: Column(
-            children: [
-              const Text(
-                'Cần xác minh thời gian chờ và lịch sử liên hệ trước khi gửi. Quy tắc thật sẽ do backend kiểm tra.',
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_submitting,
+    child: Scaffold(
+      appBar: AppBar(title: const Text('Báo cáo giao thất bại')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (widget.order.stage != DeliveryStage.atCustomer)
+            const SectionCard(
+              title: 'Chưa đủ điều kiện báo cáo',
+              child: Text(
+                'Bạn cần đến điểm giao và được máy chủ xác nhận trước khi báo thất bại.',
               ),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Tôi đã liên hệ và chờ khách tại điểm giao'),
-                value: _eligible,
-                onChanged: _submitting
-                    ? null
-                    : (v) => setState(() => _eligible = v!),
-              ),
-            ],
+            ),
+          const DemoNotice(
+            text: 'Báo cáo được gửi lên máy chủ với ảnh bằng chứng thật.',
           ),
-        ),
-        SectionCard(
-          title: 'Thông tin báo cáo • ${widget.order.id}',
-          child: Column(
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: _reason,
-                isExpanded: true,
-                items:
-                    [
-                          'Không liên lạc được với khách',
-                          'Khách từ chối nhận hàng',
-                          'Địa chỉ không chính xác',
-                        ]
-                        .map(
-                          (s) => DropdownMenuItem(
-                            value: s,
-                            child: Text(
-                              s,
-                              style: const TextStyle(fontSize: 13),
+          const SizedBox(height: 16),
+          SectionCard(
+            title: 'Điều kiện gửi báo cáo',
+            child: Column(
+              children: [
+                const Text(
+                  'Máy chủ yêu cầu chuyến ở trạng thái đã đến điểm giao. Xác nhận liên hệ dưới đây là khai báo của tài xế; chưa có quy tắc tự kiểm tra thời gian chờ.',
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Tôi đã liên hệ và chờ khách tại điểm giao',
+                  ),
+                  value: _eligible,
+                  onChanged: _submitting
+                      ? null
+                      : (v) => setState(() => _eligible = v!),
+                ),
+              ],
+            ),
+          ),
+          SectionCard(
+            title: 'Thông tin báo cáo • ${widget.order.id}',
+            child: Column(
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: _reason,
+                  isExpanded: true,
+                  items:
+                      [
+                            'Không liên lạc được với khách',
+                            'Khách từ chối nhận hàng',
+                            'Địa chỉ không chính xác',
+                          ]
+                          .map(
+                            (s) => DropdownMenuItem(
+                              value: s,
+                              child: Text(
+                                s,
+                                style: const TextStyle(fontSize: 13),
+                              ),
                             ),
-                          ),
-                        )
-                        .toList(),
-                onChanged: _submitting
-                    ? null
-                    : (s) => setState(() {
-                        _reason = s!;
-                        _requestId = DriverStore.uuid();
-                      }),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _note,
-                maxLength: 1000,
-                onChanged: (_) => _requestId = DriverStore.uuid(),
-                enabled: !_submitting,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  labelText: 'Mô tả sự việc',
-                  hintText: 'Nhập chi tiết để bộ phận hỗ trợ kiểm tra',
+                          )
+                          .toList(),
+                  onChanged: _submitting
+                      ? null
+                      : (s) => setState(() {
+                          _reason = s!;
+                          _requestId = DriverStore.uuid();
+                        }),
                 ),
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: _submitting
-                    ? null
-                    : () async {
-                        try {
-                          final photo = await ImagePicker().pickImage(
-                            source: ImageSource.gallery,
-                            imageQuality: 85,
-                            maxWidth: 2000,
-                          );
-                          if (photo == null) return;
-                          final bytes = await photo.readAsBytes();
-                          if (!mounted) return;
-                          if (bytes.length > 5 * 1024 * 1024) {
-                            setState(() => _error = 'Ảnh tối đa 5 MB.');
-                            return;
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _note,
+                  maxLength: 1000,
+                  onChanged: (_) => _requestId = DriverStore.uuid(),
+                  enabled: !_submitting,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Mô tả sự việc',
+                    hintText: 'Nhập chi tiết để bộ phận hỗ trợ kiểm tra',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (_bytes != null)
+                  Image.memory(
+                    Uint8List.fromList(_bytes!),
+                    height: 200,
+                    fit: BoxFit.contain,
+                  ),
+                OutlinedButton.icon(
+                  onPressed: _submitting
+                      ? null
+                      : () async {
+                          try {
+                            final photo = await ImagePicker().pickImage(
+                              source: ImageSource.gallery,
+                              imageQuality: 85,
+                              maxWidth: 2000,
+                            );
+                            if (photo == null) return;
+                            final bytes = await photo.readAsBytes();
+                            if (!mounted) return;
+                            if (bytes.length > 5 * 1024 * 1024) {
+                              setState(() => _error = 'Ảnh tối đa 5 MB.');
+                              return;
+                            }
+                            setState(() {
+                              _bytes = bytes;
+                              _filename = photo.name;
+                              _evidence = true;
+                              _requestId = DriverStore.uuid();
+                            });
+                          } catch (_) {
+                            if (mounted)
+                              setState(() => _error = 'Không chọn được ảnh.');
                           }
-                          setState(() {
-                            _bytes = bytes;
-                            _filename = photo.name;
-                            _evidence = true;
-                            _requestId = DriverStore.uuid();
-                          });
-                        } catch (_) {
-                          if (mounted)
-                            setState(() => _error = 'Không chọn được ảnh.');
-                        }
-                      },
-                icon: Icon(
-                  _evidence ? Icons.check_circle : Icons.add_a_photo_outlined,
+                        },
+                  icon: Icon(
+                    _evidence ? Icons.check_circle : Icons.add_a_photo_outlined,
+                  ),
+                  label: Text(
+                    _evidence
+                        ? 'Đã chọn ảnh bằng chứng'
+                        : 'Đính kèm ảnh bằng chứng',
+                  ),
                 ),
-                label: Text(
-                  _evidence
-                      ? 'Đã chọn ảnh bằng chứng'
-                      : 'Đính kèm ảnh bằng chứng',
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        if (_error != null)
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(_error!, style: const TextStyle(color: Colors.red)),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            ),
+          FilledButton(
+            onPressed:
+                _submitting || widget.order.stage != DeliveryStage.atCustomer
+                ? null
+                : _submit,
+            child: Text(_submitting ? 'Đang gửi…' : 'Gửi báo cáo'),
           ),
-        FilledButton(
-          onPressed: _submitting ? null : _submit,
-          child: Text(_submitting ? 'Đang gửi…' : 'Gửi báo cáo'),
-        ),
-      ],
+        ],
+      ),
     ),
   );
 
@@ -180,6 +204,7 @@ class _ReportPageState extends State<ReportPage> {
     );
     if (!mounted) return;
     if (success) {
+      setState(() => _submitting = false);
       await showDialog<void>(
         context: context,
         builder: (context) => AlertDialog(

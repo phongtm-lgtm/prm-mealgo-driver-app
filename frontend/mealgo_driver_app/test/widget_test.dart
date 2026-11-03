@@ -79,7 +79,7 @@ void main() {
     controller.dispose();
   });
 
-  testWidgets('Shows offline dashboard and starts a demo shift', (
+  testWidgets('Shift control appears only in the sidebar', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -88,17 +88,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('● OFFLINE'), findsOneWidget);
-    expect(find.text('Sẵn sàng làm việc »'), findsOneWidget);
-    expect(find.textContaining('CHẾ ĐỘ DEMO'), findsOneWidget);
-
-    final handle = find.byIcon(Icons.keyboard_double_arrow_right);
-    await tester.drag(handle, const Offset(700, 0));
+    expect(find.text('Sẵn sàng làm việc »'), findsNothing);
+    expect(find.text('Bắt đầu ca'), findsNothing);
+    await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
-    expect(find.text('Bắt đầu ca làm việc'), findsOneWidget);
-    await tester.tap(find.text('Xác thực demo & vào ca'));
+    await tester.drag(find.byType(Drawer), const Offset(0, -500));
     await tester.pumpAndSettle();
-    expect(find.text('● ONLINE'), findsOneWidget);
-    expect(find.text('3 đơn khả dụng'), findsOneWidget);
+    expect(find.text('Bắt đầu ca'), findsOneWidget);
   });
 
   testWidgets('Drawer opens profile page', (tester) async {

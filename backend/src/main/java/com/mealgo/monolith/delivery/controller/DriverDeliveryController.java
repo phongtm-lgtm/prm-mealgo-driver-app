@@ -12,6 +12,17 @@ import java.util.UUID;
 @RestController @RequestMapping("/api/v1/drivers/me/deliveries") @RequiredArgsConstructor @PreAuthorize("hasRole('DRIVER')")
 public class DriverDeliveryController {
     private final DeliveryService service;
+    @GetMapping("/incidents") public java.util.List<DeliveryService.IncidentResult> incidents() { return service.incidents(); }
+    @PostMapping(value="/{id}/incident",consumes=MediaType.MULTIPART_FORM_DATA_VALUE)
+    public DeliveryService.IncidentResult incident(@PathVariable UUID id,@RequestParam UUID assignmentId,@RequestParam UUID requestId,
+        @RequestParam com.mealgo.monolith.delivery.enums.IncidentReason reason,@RequestParam(required=false) String note,
+        @RequestParam(required=false) MultipartFile image) { return service.incident(id,assignmentId,requestId,reason,note,image); }
+    @GetMapping("/incidents/{id}/evidence") public ResponseEntity<byte[]> incidentEvidence(@PathVariable UUID id) {
+        var result=service.incidentEvidence(id);
+        return ResponseEntity.ok().contentType(MediaType.parseMediaType(result.contentType())).cacheControl(CacheControl.noStore())
+            .header("X-Content-Type-Options","nosniff").body(result.bytes());
+    }
+    @GetMapping("/history/{id}") public Current historyDetail(@PathVariable UUID id) { return service.historyDetail(id); }
     @GetMapping("/current") public ResponseEntity<Current> current() { return service.current().map(ResponseEntity::ok).orElseGet(() -> ResponseEntity.noContent().build()); }
     @GetMapping("/history") public PageResponse<Current> history(@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) { return service.history(page,size); }
     @PostMapping("/{id}/arrive-at-pickup") public Current arrivePickup(@PathVariable UUID id) { return service.action(id,"arrive-at-pickup"); }

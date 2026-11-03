@@ -7,6 +7,7 @@ import '../../../shared/widgets/app_widgets.dart';
 import '../../home/presentation/driver_controller.dart';
 import '../domain/delivery.dart';
 import 'report_page.dart';
+import 'incident_page.dart';
 
 class DeliveryPanel extends StatelessWidget {
   const DeliveryPanel({
@@ -83,10 +84,10 @@ class DeliveryPanel extends StatelessWidget {
             StatusPill(order.stage.label, color: AppColors.primary),
             const SizedBox(height: 16),
             SectionCard(
-              title: 'Chi tiết đơn hàng • ${order.id}',
+              title: 'Chi tiết đơn hàng • ${order.orderId ?? order.id}',
               child: Column(
                 children: [
-                  InfoRow(order.item, '1 × ${money(order.total)}'),
+                  InfoRow('Món ăn', order.item),
                   const Divider(),
                   InfoRow('Tổng tiền trả quán', '0 đ', bold: true),
                   const Align(
@@ -105,7 +106,7 @@ class DeliveryPanel extends StatelessWidget {
                   const Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'Thu tiền mặt • Không đưa hóa đơn cho khách',
+                      'Thu tiền mặt COD • Không phải thu nhập tài xế',
                       style: TextStyle(fontSize: 12, color: AppColors.muted),
                     ),
                   ),
@@ -133,7 +134,7 @@ class DeliveryPanel extends StatelessWidget {
                 icon: const Icon(Icons.cancel_outlined),
                 label: const Text('Từ chối / Quán đóng cửa'),
               ),
-            if (order.stage == DeliveryStage.atCustomer)
+            if (!order.stage.isTerminal)
               TextButton.icon(
                 onPressed: controller.busy
                     ? null
@@ -144,10 +145,14 @@ class DeliveryPanel extends StatelessWidget {
                         ),
                       ),
                 icon: const Icon(Icons.report_problem_outlined),
-                label: const Text('Báo cáo giao thất bại'),
+                label: Text(
+                  order.stage == DeliveryStage.atCustomer
+                      ? 'Báo cáo giao thất bại'
+                      : 'Chưa đủ điều kiện báo thất bại',
+                ),
               ),
           ] else
-            InfoRow('Thu khách • 1 món', money(order.total)),
+            InfoRow('Tiền COD cần thu', money(order.total)),
           const SizedBox(height: 12),
         ],
         if (showAction)
@@ -262,29 +267,18 @@ class DeliveryPanel extends StatelessWidget {
       ),
     );
     if (reason == null || !context.mounted) return;
-    if (reason == 'Quán đã đóng cửa') {
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Bằng chứng quán đóng cửa'),
-          content: const Text(
-            'Chưa hỗ trợ gửi bằng chứng quán đóng cửa tại bước này.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Hủy'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Đóng'),
-            ),
-          ],
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => IncidentPage(
+          controller: controller,
+          order: order,
+          reason: {
+            'Lý do cá nhân': 'PERSONAL',
+            'Quán chuẩn bị quá lâu': 'RESTAURANT_DELAY',
+            'Quán đã đóng cửa': 'RESTAURANT_CLOSED',
+          }[reason]!,
         ),
-      );
-      if (confirmed != true) return;
-      return;
-    }
-    await controller.rejectActive(reason);
+      ),
+    );
   }
 }

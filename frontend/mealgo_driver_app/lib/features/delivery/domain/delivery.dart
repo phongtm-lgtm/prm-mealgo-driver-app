@@ -5,7 +5,7 @@ enum DeliveryStage {
   atCustomer('Đã đến điểm giao', 'Hoàn thành giao hàng'),
   completed('Giao hàng thành công', ''),
   cancelled('Đã hủy đơn', ''),
-  reported('Chờ xử lý báo cáo', '');
+  reported('Đã báo giao thất bại', '');
 
   const DeliveryStage(this.label, this.action);
   final String label;
@@ -16,6 +16,8 @@ enum DeliveryStage {
 class DeliveryOrder {
   const DeliveryOrder({
     required this.id,
+    this.orderId,
+    this.assignmentId,
     required this.restaurant,
     required this.pickupAddress,
     required this.customer,
@@ -28,6 +30,10 @@ class DeliveryOrder {
     this.stage = DeliveryStage.accepted,
   });
   final String id;
+
+  /// Business order and assignment IDs are distinct from this delivery ID.
+  final String? orderId;
+  final String? assignmentId;
   final String restaurant;
   final String pickupAddress;
   final String customer;
@@ -41,6 +47,8 @@ class DeliveryOrder {
 
   DeliveryOrder withStage(DeliveryStage value) => DeliveryOrder(
     id: id,
+    orderId: orderId,
+    assignmentId: assignmentId,
     restaurant: restaurant,
     pickupAddress: pickupAddress,
     customer: customer,
@@ -77,4 +85,15 @@ abstract interface class DeliveryRepository {
   Future<DeliveryOrder> advance(String id);
   Future<DeliveryOrder> reject(String id, String reason);
   Future<DeliveryOrder> report(DeliveryReport report);
+}
+
+abstract interface class DeliveryIncidentRepository {
+  Future<Map<String, dynamic>> submitIncident(
+    String deliveryId,
+    String reason,
+    String note,
+    String requestId,
+    List<int>? bytes,
+    String filename,
+  );
 }
