@@ -32,12 +32,12 @@ class DriverEventStream {
         'Accept': 'text/event-stream',
         'Cache-Control': 'no-cache',
       });
-      final response = await client.send(request).timeout(
-        const Duration(seconds: 20),
-      );
+      final response = await client
+          .send(request)
+          .timeout(const Duration(seconds: 20));
       if (_disposed) return;
       if (response.statusCode == 401) {
-        api.onUnauthorized?.call();
+        if (!await api.refreshSession(token)) api.onUnauthorized?.call();
         return;
       }
       if (response.statusCode != 200) {
@@ -50,10 +50,11 @@ class DriverEventStream {
       }
       _failures = 0;
       String event = '';
-      await for (final line in response.stream
-          .timeout(const Duration(seconds: 45))
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())) {
+      await for (final line
+          in response.stream
+              .timeout(const Duration(seconds: 45))
+              .transform(utf8.decoder)
+              .transform(const LineSplitter())) {
         if (_disposed) break;
         if (line.startsWith('event:')) {
           event = line.substring(6).trim();
@@ -67,7 +68,7 @@ class DriverEventStream {
     } finally {
       client.close();
       if (identical(_client, client)) _client = null;
-      if (!_disposed && api.token != null && api.token == token) {
+      if (!_disposed && api.token != null) {
         _failures = (_failures + 1).clamp(1, 5);
         _retry = Timer(Duration(seconds: 1 << _failures), connect);
       }

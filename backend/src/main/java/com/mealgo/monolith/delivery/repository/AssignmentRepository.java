@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.time.Instant;
 import java.util.*;
 public interface AssignmentRepository extends JpaRepository<Assignment,UUID> {
+    List<Assignment> findByDeliveryId(UUID deliveryId);
     List<Assignment> findByDriverIdAndStatusAndExpiresAtAfter(UUID driverId,AssignmentStatus status,Instant now);
     boolean existsByDriverIdAndStatusAndExpiresAtAfter(UUID driverId,AssignmentStatus status,Instant now);
     boolean existsByDeliveryIdAndStatusAndExpiresAtAfter(UUID deliveryId,AssignmentStatus status,Instant now);

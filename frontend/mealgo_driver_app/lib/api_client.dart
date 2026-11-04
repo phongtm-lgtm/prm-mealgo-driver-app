@@ -19,12 +19,30 @@ class ApiClient {
   final http.Client client;
   String? token;
   void Function()? onUnauthorized;
-  ApiClient({http.Client? client}) : client = client ?? http.Client();
+  Future<bool> Function()? onRefresh;
+  Future<bool>? _refreshing;
+  Future<bool> refreshSession(String expiredToken) async {
+    if (token != expiredToken) return token != null;
+    if (onRefresh == null) return false;
+    final pending = _refreshing ??= onRefresh!();
+    try {
+      return await pending;
+    } finally {
+      if (identical(_refreshing, pending)) _refreshing = null;
+    }
+  }
+
+  ApiClient({http.Client? client})
+    : client = _SessionClient(client ?? http.Client()) {
+    (this.client as _SessionClient).owner = this;
+  }
 
   Future<dynamic> request(String method, String path, [Object? body]) async {
     final request = http.Request(method, Uri.parse('$baseUrl/api/v1$path'));
     request.headers['Content-Type'] = 'application/json';
-    if (token != null) request.headers['Authorization'] = 'Bearer $token';
+    if (token != null && !path.startsWith('/auth/')) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
     if (body != null) request.body = jsonEncode(body);
     try {
       final response = await client
@@ -34,10 +52,7 @@ class ApiClient {
     } on ApiException {
       rethrow;
     } catch (_) {
-      throw ApiException(
-        0,
-        'Không kết nối được máy chủ',
-      );
+      throw ApiException(0, 'Không kết nối được máy chủ');
     }
   }
 
@@ -51,7 +66,10 @@ class ApiClient {
       data = null;
     }
     if (response.statusCode >= 400) {
-      if (response.statusCode == 401 && token != null) onUnauthorized?.call();
+      if (response.statusCode == 401 &&
+          token != null &&
+          !(response.request?.url.path.startsWith('/api/v1/auth/') ?? false))
+        onUnauthorized?.call();
       throw ApiException(
         response.statusCode,
         data is Map
@@ -178,4 +196,46 @@ class ApiClient {
     }
     return response.bodyBytes;
   }
+}
+
+/// Buffers request bytes so JSON and image uploads can be retried once after 401.
+class _SessionClient extends http.BaseClient {
+  _SessionClient(this.inner);
+  final http.Client inner;
+  late ApiClient owner;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final bytes = await request.finalize().toBytes();
+    final originalToken = owner.token;
+    Future<http.StreamedResponse> sendCopy({bool retry = false}) {
+      final copy = http.Request(request.method, request.url)
+        ..headers.addAll(request.headers)
+        ..bodyBytes = bytes
+        ..followRedirects = request.followRedirects
+        ..maxRedirects = request.maxRedirects;
+      if (retry && owner.token != null)
+        copy.headers['Authorization'] = 'Bearer ${owner.token}';
+      return inner.send(copy);
+    }
+
+    final response = await sendCopy();
+    if (response.statusCode != 401 ||
+        request.url.path.startsWith('/api/v1/auth/') ||
+        originalToken == null ||
+        owner.onRefresh == null)
+      return response;
+    await response.stream.drain<void>();
+    bool refreshed;
+    if (owner.token != originalToken) {
+      refreshed = owner.token != null;
+    } else {
+      refreshed = await owner.refreshSession(originalToken);
+    }
+    if (refreshed) return sendCopy(retry: true);
+    return http.StreamedResponse(const Stream<List<int>>.empty(), 401);
+  }
+
+  @override
+  void close() => inner.close();
 }

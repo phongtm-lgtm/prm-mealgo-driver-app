@@ -250,14 +250,41 @@ class OrderDeliveryFlowTest {
                 request.param("assignmentId",assignment).param("requestId",key).param("reason",reason);
                 if(reason.equals("RESTAURANT_CLOSED")) request.file(new MockMultipartFile("image","proof.png","image/png",image.toByteArray()));
                 mvc.perform(request.header("Authorization","Bearer "+driver)).andExpect(status().isOk())
-                    .andExpect(jsonPath("$.outcome").value(reason.equals("RESTAURANT_CLOSED")?"CANCELLED":"PENDING_REASSIGNMENT"));
+                    .andExpect(jsonPath("$.outcome").value("PENDING_REASSIGNMENT"));
             }
             call(get("/api/v1/drivers/me/deliveries/current"),driver,204);
-            assertEquals(reason.equals("RESTAURANT_CLOSED")?"CANCELLED":"PREPARING",call(get("/api/v1/customers/me/orders/"+order),customer,200).get("status").asText());
-            if(reason.equals("RESTAURANT_CLOSED")) call(get("/api/v1/drivers/me/deliveries/history/"+delivery),driver,200);
+            assertEquals("PREPARING",call(get("/api/v1/customers/me/orders/"+order),customer,200).get("status").asText());
         }
         assertEquals(3,call(get("/api/v1/drivers/me/deliveries/incidents"),driver,200).size());
         call(get("/api/v1/drivers/me/deliveries/incidents"),customer,403);
+    }
+    @Test @org.springframework.transaction.annotation.Transactional void cancellationBoundaries() throws Exception {
+        String driver=login("driver.demo"), merchant=login("merchant.demo"), customer=login("customer.demo");
+        var restaurant=restaurants.findAll().getFirst(); var item=menu.findAll().getFirst();
+        var body=Map.of("restaurantId",restaurant.getId(),"items",List.of(Map.of("menuItemId",item.getId(),"quantity",1)),
+            "recipient",Map.of("name","Customer","phone","0901234567"),"dropoff",Map.of("address","Address","latitude",10.78,"longitude",106.70),"paymentMethod","COD");
+        call(put("/api/v1/drivers/me/online-status").content("{\"online\":true}"),driver,200);
+        for(boolean ready:List.of(false,true)) {
+            String order=call(post("/api/v1/customers/me/orders").header("Idempotency-Key",UUID.randomUUID().toString()).content(json.writeValueAsString(body)),customer,201).get("orderId").asText();
+            String merchantPath="/api/v1/merchant/restaurants/"+restaurant.getId()+"/orders/"+order;
+            call(post(merchantPath+"/accept").content("{\"estimatedPreparationMinutes\":10}"),merchant,200);
+            call(post("/api/v1/customers/me/orders/"+order+"/cancel").content("{\"reason\":\"Changed mind\"}"),customer,409);
+            dispatch.dispatch();
+            String assignment=call(get("/api/v1/drivers/me/offers"),driver,200).get(0).get("assignmentId").asText();
+            call(post("/api/v1/drivers/me/offers/"+assignment+"/accept"),driver,200);
+            String delivery=call(get("/api/v1/drivers/me/deliveries/current"),driver,200).get("deliveryId").asText();
+            if(ready) {
+                call(post(merchantPath+"/ready"),merchant,200);
+                mvc.perform(multipart("/api/v1/drivers/me/deliveries/"+delivery+"/incident")
+                    .param("assignmentId",assignment).param("requestId",UUID.randomUUID().toString()).param("reason","PERSONAL")
+                    .header("Authorization","Bearer "+driver)).andExpect(status().isConflict());
+                call(post(merchantPath+"/cancel").content("{\"reason\":\"No ingredients\"}"),merchant,409);
+            } else {
+                assertEquals("CANCELLED",call(post(merchantPath+"/cancel").content("{\"reason\":\"No ingredients\"}"),merchant,200).get("status").asText());
+                call(get("/api/v1/drivers/me/deliveries/current"),driver,204);
+                assertEquals(0,call(get("/api/v1/drivers/me/offers"),driver,200).size());
+            }
+        }
     }
     private String login(String name) throws Exception {
         String phone = switch (name) {

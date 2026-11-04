@@ -138,11 +138,11 @@ class _FaceVerificationPageState extends State<FaceVerificationPage>
           padding: const EdgeInsets.all(24),
           children: [
             const DemoNotice(
-              text: 'Camera thật • Backend hiện luôn trả thành công, chưa nhận diện khuôn mặt.',
+              text: 'Bản thử nghiệm: bước xác minh này chưa kiểm tra khuôn mặt hoặc danh tính của bạn.',
             ),
             const SizedBox(height: 16),
             const Text(
-              'App cần quyền truy cập camera để chụp ảnh vào ca. Không dùng microphone. Ảnh chỉ được gửi khi bạn nhấn “Gửi ảnh & vào ca”; backend không lưu ảnh.',
+              'Cho phép dùng camera để chụp ảnh trước khi vào ca. Ảnh chỉ được gửi khi bạn xác nhận và không được lưu lại. Ứng dụng không thu âm.',
             ),
             const SizedBox(height: 16),
             AspectRatio(

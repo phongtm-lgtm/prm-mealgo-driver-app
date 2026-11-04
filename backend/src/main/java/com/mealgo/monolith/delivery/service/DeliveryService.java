@@ -151,7 +151,7 @@ public class DeliveryService {
     public record IncidentResult(UUID id,UUID deliveryId,UUID assignmentId,IncidentReason reason,String outcome,String note,Instant createdAt) {}
     private IncidentResult incidentResult(DeliveryIncident i) {
         return new IncidentResult(i.getId(),i.getDeliveryId(),i.getAssignmentId(),i.getReason(),
-            i.getReason()==IncidentReason.RESTAURANT_CLOSED?"CANCELLED":"PENDING_REASSIGNMENT",i.getNote(),i.getCreatedAt());
+            "PENDING_REASSIGNMENT",i.getNote(),i.getCreatedAt());
     }
     @Transactional(readOnly=true) public List<IncidentResult> incidents() {
         return incidents.findByDriverIdOrderByCreatedAtDesc(drivers.myDriver().getId()).stream().map(this::incidentResult).toList();
@@ -175,7 +175,7 @@ public class DeliveryService {
         if(!assignmentId.equals(d.getAssignmentId())) throw ApiException.notFound("Assignment not found");
         if(!List.of(DeliveryStatus.ASSIGNED,DeliveryStatus.AT_PICKUP).contains(d.getStatus())) throw ApiException.conflict("Cannot release or cancel after pickup");
         var o=orders.lock(d.getOrderId());
-        if(!List.of(OrderStatus.PREPARING,OrderStatus.READY).contains(o.getStatus())) throw ApiException.conflict("Order is no longer eligible");
+        if(o.getStatus()!=OrderStatus.PREPARING) throw ApiException.conflict("Cannot release a delivery once the order is READY");
         if(reason==IncidentReason.RESTAURANT_CLOSED) proximity.requireNear(driver,o.getPickupLatitude(),o.getPickupLongitude());
         var i=new DeliveryIncident(); i.setDriverId(driver.getId()); i.setDeliveryId(id); i.setAssignmentId(assignmentId);
         i.setRequestId(requestId); i.setReason(reason); i.setNote(note);
@@ -184,13 +184,34 @@ public class DeliveryService {
             i.setSha256(validated.hash()); i.setContentType(validated.contentType());
             i.setObjectKey("incidents/"+id+"/"+requestId+"/"+validated.hash());
             storage.put(i.getObjectKey(),validated.bytes(),validated.contentType());
-            d.setStatus(DeliveryStatus.CANCELLED); o.setStatus(OrderStatus.CANCELLED); a.setStatus(AssignmentStatus.CANCELLED);
-        } else {
-            a.setStatus(AssignmentStatus.RELEASED); d.setStatus(DeliveryStatus.PENDING_ASSIGNMENT);
-            d.setDriverId(null); d.setAssignmentId(null);
         }
+        a.setStatus(AssignmentStatus.RELEASED); d.setStatus(DeliveryStatus.PENDING_ASSIGNMENT);
+        d.setDriverId(null); d.setAssignmentId(null);
         d.setUpdatedAt(Instant.now()); o.setUpdatedAt(Instant.now()); incidents.save(i);
+        events.changedAfterCommit(driver.getId());
         return incidentResult(i);
+    }
+    @Transactional public Order cancelByRestaurant(UUID orderId,String reason) {
+        // Match driver actions: lock delivery before order to avoid inverse lock ordering.
+        var found=deliveries.findByOrderId(orderId);
+        var d=found.isPresent()?lock(found.get().getId()):null;
+        var o=orders.lock(orderId);
+        if(o.getStatus()==OrderStatus.CANCELLED) return o;
+        if(!List.of(OrderStatus.PENDING,OrderStatus.PREPARING).contains(o.getStatus()))
+            throw ApiException.conflict("Restaurant can only cancel before READY");
+        o.setStatus(OrderStatus.CANCELLED); o.setCancellationReason(reason); o.setUpdatedAt(Instant.now());
+        if(d!=null) {
+            d.setStatus(DeliveryStatus.CANCELLED); d.setUpdatedAt(Instant.now());
+            events.changedAfterCommit(d.getDriverId());
+            // Cancel outstanding offers too, including offers not yet accepted.
+            for(var a:assignments.findByDeliveryId(d.getId())) {
+                if(a.getStatus()==AssignmentStatus.OFFERED || a.getStatus()==AssignmentStatus.ACCEPTED) {
+                    a.setStatus(AssignmentStatus.CANCELLED);
+                    events.changedAfterCommit(a.getDriverId());
+                }
+            }
+        }
+        return o;
     }
     private ValidatedImage validateImageRequired(MultipartFile image) {
         if(image==null) throw ApiException.badRequest("Restaurant closure requires image evidence");

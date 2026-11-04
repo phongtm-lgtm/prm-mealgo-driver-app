@@ -48,11 +48,11 @@ class _ReportPageState extends State<ReportPage> {
             const SectionCard(
               title: 'Chưa đủ điều kiện báo cáo',
               child: Text(
-                'Bạn cần đến điểm giao và được máy chủ xác nhận trước khi báo thất bại.',
+                'Hãy đến địa chỉ khách và xác nhận “Đã đến điểm giao” trước khi báo giao không thành công.',
               ),
             ),
           const DemoNotice(
-            text: 'Báo cáo được gửi lên máy chủ với ảnh bằng chứng thật.',
+            text: 'Chọn lý do và đính kèm ảnh để được hỗ trợ khi không thể giao hàng.',
           ),
           const SizedBox(height: 16),
           SectionCard(

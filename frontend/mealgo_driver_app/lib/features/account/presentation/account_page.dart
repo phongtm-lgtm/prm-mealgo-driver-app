@@ -4,6 +4,11 @@ import '../../../core/formatters.dart';
 import '../../../shared/widgets/app_widgets.dart';
 import '../../home/presentation/driver_controller.dart';
 import 'account_state.dart';
+import 'order_history_view.dart';
+import 'transaction_history_view.dart';
+import 'wallet_view.dart';
+import 'earnings_view.dart';
+import 'driver_profile_view.dart';
 
 enum AccountSection {
   profile('Thông tin tài xế'),
@@ -36,6 +41,7 @@ class _AccountPageState extends State<AccountPage> {
   bool _loading = true;
   String? _error;
   int _revision = 0;
+  Map<String, dynamic>? _todayEarnings;
   String get _dateString =>
       '${_date.year}-${_date.month.toString().padLeft(2, '0')}-${_date.day.toString().padLeft(2, '0')}';
   String get _resource => switch (widget.section) {
@@ -62,7 +68,7 @@ class _AccountPageState extends State<AccountPage> {
     }
   }
 
-  Future<void> _load({bool more = false}) async {
+  Future<void> _load({bool more = false, bool refresh = false}) async {
     if (!mounted || (_loading && more)) return;
     setState(() {
       _loading = true;
@@ -72,7 +78,7 @@ class _AccountPageState extends State<AccountPage> {
       if (widget.section == AccountSection.profile) return;
       final a = account;
       if (a == null) {
-        throw StateError('Cần đăng nhập máy chủ để xem dữ liệu tài khoản.');
+        throw StateError('Vui lòng đăng nhập để xem thông tin tài khoản.');
       }
       switch (widget.section) {
         case AccountSection.profile:
@@ -82,12 +88,35 @@ class _AccountPageState extends State<AccountPage> {
         case AccountSection.wallet:
           await a.loadWallet();
           await a.loadList(_resource, more: more);
+          final now = DateTime.now().toUtc().add(const Duration(hours: 7));
+          final date =
+              '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+          try {
+            _todayEarnings = await a.repository.earnings('DAY', date);
+          } catch (_) {
+            _todayEarnings = null;
+          }
         case AccountSection.transactions:
         case AccountSection.orders:
         case AccountSection.notifications:
           await a.loadList(_resource, more: more);
       }
     } catch (e) {
+      if (mounted &&
+          refresh &&
+          (widget.section == AccountSection.transactions ||
+              widget.section == AccountSection.notifications)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.section == AccountSection.notifications
+                  ? 'Chưa thể cập nhật thông báo. Vui lòng thử lại.'
+                  : 'Không thể cập nhật giao dịch. Hãy thử lại nhé.',
+            ),
+          ),
+        );
+        return;
+      }
       if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -100,7 +129,8 @@ class _AccountPageState extends State<AccountPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
+            .showSnackBar(SnackBar(content: Text(widget.section == AccountSection.notifications
+              ? 'Chưa thể cập nhật thông báo. Vui lòng thử lại.' : '$e')));
       }
     }
   }
@@ -123,7 +153,7 @@ class _AccountPageState extends State<AccountPage> {
       ],
     ),
     body: RefreshIndicator(
-      onRefresh: () => _load(),
+      onRefresh: () => _load(refresh: true),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
@@ -133,7 +163,17 @@ class _AccountPageState extends State<AccountPage> {
             SectionCard(
               child: Column(
                 children: [
-                  Text(_error!),
+                  Text(
+                    widget.section == AccountSection.transactions
+                        ? 'Chưa thể tải lịch sử giao dịch. Vui lòng thử lại.'
+                        : widget.section == AccountSection.wallet
+                        ? 'Chưa thể tải thông tin ví. Vui lòng thử lại.'
+                        : widget.section == AccountSection.orders
+                        ? 'Chưa thể tải lịch sử đơn hàng. Vui lòng thử lại.'
+                        : widget.section == AccountSection.notifications
+                        ? 'Chưa thể tải thông báo. Vui lòng thử lại.'
+                        : _error!,
+                  ),
                   TextButton(
                     onPressed: () => _load(),
                     child: const Text('Thử lại'),
@@ -152,7 +192,12 @@ class _AccountPageState extends State<AccountPage> {
     if (a == null && widget.section == AccountSection.profile) {
       final profile = widget.controller.profile;
       return [
-        SectionCard(title: 'Thông tin cá nhân', child: Text(profile?.id ?? '')),
+        if (profile != null)
+          DriverProfileView(
+            name: profile.name,
+            driverId: profile.id,
+            phone: profile.phone,
+          ),
       ];
     }
     if (a == null) return [];
@@ -161,39 +206,21 @@ class _AccountPageState extends State<AccountPage> {
         final p = widget.controller.profile;
         if (p == null) return [];
         return [
-          SectionCard(
-            title: 'Thông tin cá nhân',
-            child: Column(
-              children: [
-                InfoRow('Họ tên', p.name),
-                InfoRow('Mã tài xế', p.id),
-                InfoRow('Số điện thoại', p.phone),
-                const Text(
-                  'Số điện thoại liên hệ không thay đổi số đăng nhập.',
-                ),
-                TextButton(
-                  onPressed: _editProfile,
-                  child: const Text('Chỉnh sửa hồ sơ'),
-                ),
-              ],
-            ),
+          DriverProfileView(
+            name: p.name,
+            driverId: p.id,
+            phone: p.phone,
+            onEdit: _editProfile,
           ),
         ];
       case AccountSection.earnings:
         final e = _loading || _error != null ? null : a.earnings;
-        final chart = (e?['chart'] as List? ?? []);
-        final max = chart.fold<double>(
-          0,
-          (v, row) => (row['earnings'] as num).toDouble() > v
-              ? (row['earnings'] as num).toDouble()
-              : v,
-        );
         return [
           SegmentedButton<String>(
             segments: const [
-              ButtonSegment(value: 'DAY', label: Text('Ngày')),
-              ButtonSegment(value: 'WEEK', label: Text('Tuần')),
-              ButtonSegment(value: 'MONTH', label: Text('Tháng')),
+              ButtonSegment(value: 'DAY', label: Text('Theo ngày')),
+              ButtonSegment(value: 'WEEK', label: Text('Theo tuần')),
+              ButtonSegment(value: 'MONTH', label: Text('Theo tháng')),
             ],
             selected: {_period},
             onSelectionChanged: _loading
@@ -222,69 +249,15 @@ class _AccountPageState extends State<AccountPage> {
                   },
           ),
           if (e != null)
-            SectionCard(
-              title: '${e['fromDate']} — ${e['toDate']}',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    money((e['totalEarnings'] as num).round()),
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                    ),
+            EarningsView(
+              data: e,
+              onTransactions: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => AccountPage(
+                    controller: widget.controller,
+                    section: AccountSection.transactions,
                   ),
-                  InfoRow(
-                    'Chuyến được ghi nhận',
-                    '${e['completedDeliveries']}',
-                  ),
-                  if (e['earningsConfigured'] != true)
-                    const Text(
-                      'Chưa cấu hình tiền công. Không lấy tiền COD làm thu nhập.',
-                    ),
-                  const Text(
-                    'Theo giờ Việt Nam. Không tính bù chuyến trước khi triển khai.',
-                  ),
-                  const SizedBox(height: 16),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        for (final row in chart)
-                          SizedBox(
-                            width: 72,
-                            child: Column(
-                              children: [
-                                Tooltip(
-                                  message: money(
-                                    (row['earnings'] as num).round(),
-                                  ),
-                                  child: Container(
-                                    width: 28,
-                                    height: max == 0
-                                        ? 2
-                                        : 2 +
-                                              98 *
-                                                  (row['earnings'] as num) /
-                                                  max,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primary,
-                                  ),
-                                ),
-                                Text((row['date'] as String).substring(5)),
-                                Text(
-                                  money((row['earnings'] as num).round()),
-                                  style: const TextStyle(fontSize: 10),
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
         ];
@@ -293,6 +266,50 @@ class _AccountPageState extends State<AccountPage> {
       case AccountSection.orders:
       case AccountSection.notifications:
         final rows = a.lists[_resource] ?? [];
+        if (widget.section == AccountSection.wallet) {
+          return [
+            WalletView(
+              wallet: a.wallet,
+              earnings: _todayEarnings,
+              rows: rows,
+              loading: _loading,
+              failed: _error != null,
+              onOpen: _openDetail,
+              onAll: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => AccountPage(
+                    controller: widget.controller,
+                    section: AccountSection.transactions,
+                  ),
+                ),
+              ),
+            ),
+          ];
+        }
+        if (widget.section == AccountSection.transactions) {
+          return [
+            TransactionHistoryView(
+              rows: rows,
+              loading: _loading,
+              failed: _error != null,
+              hasNext: a.hasNext[_resource] == true,
+              onMore: () => _load(more: true),
+              onOpen: _openDetail,
+            ),
+          ];
+        }
+        if (widget.section == AccountSection.orders) {
+          return [
+            OrderHistoryView(
+              rows: rows,
+              loading: _loading,
+              failed: _error != null,
+              hasNext: a.hasNext[_resource] == true,
+              onMore: () => _load(more: true),
+              onOpen: (row) => _openDetail(row),
+            ),
+          ];
+        }
         return [
           if (widget.section == AccountSection.wallet && a.wallet != null)
             SectionCard(
@@ -306,7 +323,7 @@ class _AccountPageState extends State<AccountPage> {
                   if (a.wallet!['earningsConfigured'] != true)
                     const Text('Tiền công chưa được cấu hình.'),
                   const Text(
-                    'Chưa hỗ trợ nạp/rút, ngân hàng hoặc đối soát COD.',
+                    'Bạn chưa thể nạp, rút tiền hoặc liên kết ngân hàng tại đây.',
                   ),
                 ],
               ),
@@ -316,7 +333,7 @@ class _AccountPageState extends State<AccountPage> {
               children: [
                 Expanded(child: Text('${a.unread} thông báo chưa đọc')),
                 TextButton(
-                  onPressed: _loading
+                  onPressed: _loading || a.unread == 0
                       ? null
                       : () => _action(() => a.read(null)),
                   child: const Text('Đọc tất cả'),
@@ -324,7 +341,7 @@ class _AccountPageState extends State<AccountPage> {
               ],
             ),
           if (!_loading && _error == null && rows.isEmpty)
-            const SectionCard(child: Text('Chưa có dữ liệu.')),
+            const SectionCard(child: Text('Chưa có thông tin để hiển thị.')),
           for (final row in rows) _row(row),
           if (a.hasNext[_resource] == true)
             TextButton(
@@ -338,15 +355,32 @@ class _AccountPageState extends State<AccountPage> {
   Widget _row(Map<String, dynamic> row) {
     if (widget.section == AccountSection.notifications)
       return Card(
+        elevation: 0,
+        color: row['read'] == true
+            ? Theme.of(context).colorScheme.surface
+            : Theme.of(context).colorScheme.primary.withValues(alpha: .07),
         child: ListTile(
           leading: Icon(
             row['read'] == true
                 ? Icons.notifications_none
                 : Icons.notifications_active,
           ),
-          title: Text(row['title'] as String),
+          title: Text(
+            row['title'] as String,
+            style: TextStyle(
+              fontWeight: row['read'] == true
+                  ? FontWeight.w500
+                  : FontWeight.w700,
+            ),
+          ),
           subtitle: Text('${row['message']}\n${_time(row['createdAt'])}'),
-          trailing: row['read'] == true ? null : const Text('Chưa đọc'),
+          trailing: row['read'] == true
+              ? null
+              : Icon(
+                  Icons.circle,
+                  size: 9,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
           onTap: () => _action(() => account!.read(row['id'] as String)),
         ),
       );
@@ -364,67 +398,72 @@ class _AccountPageState extends State<AccountPage> {
               : '${money((row['amount'] as num).round())}\n${_time(row['createdAt'])}',
         ),
         trailing: const Icon(Icons.chevron_right),
-        onTap: () => _action(() async {
-          final detail = await account!.repository.accountDetail(
-            _resource,
-            (order ? row['deliveryId'] : row['id']) as String,
-          );
-          if (!mounted) return;
-          await showDialog<void>(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: Text(
-                order ? 'Chi tiết chuyến giao' : 'Chi tiết giao dịch',
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: order
-                      ? [
-                          Text('Mã chuyến: ${detail['deliveryId']}'),
-                          Text('Trạng thái: ${_status(detail['status'])}'),
-                          Text('Quán: ${detail['restaurant']?['name']}'),
-                          Text('Lấy hàng: ${detail['pickup']?['address']}'),
-                          Text('Giao đến: ${detail['dropoff']?['address']}'),
-                          Text(
-                            'Người nhận: ${detail['recipient']?['name']} • ${detail['recipient']?['phone']}',
-                          ),
-                          for (final item in detail['items'] as List? ?? [])
-                            Text('${item['quantity']} × ${item['name']}'),
-                          Text(
-                            'COD cần thu: ${money((detail['payment']?['amountToCollect'] as num? ?? 0).round())}',
-                          ),
-                          Text('Cập nhật: ${_time(detail['updatedAt'])}'),
-                          const Text(
-                            'Tiền công xem trong giao dịch ví; COD không phải thu nhập.',
-                          ),
-                        ]
-                      : [
-                          Text('${detail['description']}'),
-                          Text('Mã: ${detail['id']}'),
-                          Text(
-                            'Số tiền: ${money((detail['amount'] as num).round())}',
-                          ),
-                          Text(
-                            'Số dư sau giao dịch: ${money((detail['balanceAfter'] as num).round())}',
-                          ),
-                          Text('Chuyến: ${detail['deliveryId']}'),
-                          Text(_time(detail['createdAt'])),
-                        ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Đóng'),
-                ),
-              ],
-            ),
-          );
-        }),
+        onTap: () => _openDetail(row),
       ),
     );
+  }
+
+  Future<void> _openDetail(Map<String, dynamic> row) {
+    final order = widget.section == AccountSection.orders;
+    return _action(() async {
+      final detail = await account!.repository.accountDetail(
+        _resource,
+        (order ? row['deliveryId'] : row['id']) as String,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(order ? 'Chi tiết chuyến giao' : 'Chi tiết giao dịch'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: order
+                  ? [
+                      Text('Mã chuyến: ${detail['deliveryId']}'),
+                      Text('Trạng thái: ${_status(detail['status'])}'),
+                      Text('Quán: ${detail['restaurant']?['name']}'),
+                      Text('Lấy hàng: ${detail['pickup']?['address']}'),
+                      Text('Giao đến: ${detail['dropoff']?['address']}'),
+                      Text(
+                        'Người nhận: ${detail['recipient']?['name']} • ${detail['recipient']?['phone']}',
+                      ),
+                      for (final item in detail['items'] as List? ?? [])
+                        Text('${item['quantity']} × ${item['name']}'),
+                      Text(
+                        'Tiền cần thu từ khách: ${money((detail['payment']?['amountToCollect'] as num? ?? 0).round())}',
+                      ),
+                      Text('Cập nhật: ${_time(detail['updatedAt'])}'),
+                      const Text(
+                        'Xem tiền công trong giao dịch ví. Tiền thu hộ không tính vào thu nhập.',
+                      ),
+                    ]
+                  : [
+                      Text(transactionTitle(detail)),
+                      Text(
+                        'Số tiền: ${money((detail['amount'] as num).round())}',
+                      ),
+                      Text(
+                        'Số dư sau giao dịch: ${money((detail['balanceAfter'] as num).round())}',
+                      ),
+                      if (detail['deliveryId'] != null)
+                        Text(
+                          'Mã chuyến: ${shortTransactionId(detail['deliveryId'])}',
+                        ),
+                      Text(_time(detail['createdAt'])),
+                    ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Đóng'),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   String _time(dynamic value) {
@@ -433,7 +472,7 @@ class _AccountPageState extends State<AccountPage> {
         .add(const Duration(hours: 7));
     return date == null
         ? ''
-        : '${date.toIso8601String().substring(0, 16).replaceFirst('T', ' ')} (giờ VN)';
+        : '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')} · ${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 
   String _status(dynamic value) => switch (value) {

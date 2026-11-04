@@ -13,7 +13,8 @@ import 'driver_controller.dart';
 import 'face_verification_page.dart';
 
 class HomePage extends StatelessWidget {
-  const HomePage({super.key, required this.controller});
+  const HomePage({super.key, required this.controller, this.onLogout});
+  final Future<void> Function()? onLogout;
   final DriverController controller;
 
   @override
@@ -420,52 +421,86 @@ class HomePage extends StatelessWidget {
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          DrawerHeader(
+          Container(
+            padding: const EdgeInsets.all(20),
             decoration: const BoxDecoration(color: AppColors.ink),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const CircleAvatar(
-                  backgroundColor: AppColors.primary,
-                  child: Icon(Icons.person, color: Colors.white),
+                Row(
+                  children: [
+                    const CircleAvatar(
+                      radius: 25,
+                      backgroundColor: AppColors.primary,
+                      child: Icon(Icons.person_outline, color: Colors.white),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            controller.profile!.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            controller.profile!.rating > 0
+                                ? '☆ ${controller.profile!.rating} / 5'
+                                : '☆ Chưa có đánh giá',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  controller.profile!.name,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 4,
                   ),
-                ),
-                Text(
-                  '${controller.profile!.id} • ${controller.profile!.rating} ★',
-                  style: const TextStyle(color: Colors.grey),
+                  decoration: BoxDecoration(
+                    color: Colors.white12,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'Tài xế MealGo',
+                    style: TextStyle(color: Colors.white, fontSize: 11),
+                  ),
                 ),
               ],
             ),
           ),
+          _menuLabel('Tài khoản'),
           for (final entry in <AccountSection, IconData>{
             AccountSection.profile: Icons.person_outline,
+            AccountSection.notifications: Icons.notifications_none,
+          }.entries)
+            _accountMenuItem(context, entry.key, entry.value),
+          _menuDivider(),
+          _menuLabel('Thu nhập & giao dịch'),
+          for (final entry in <AccountSection, IconData>{
             AccountSection.earnings: Icons.bar_chart,
             AccountSection.wallet: Icons.account_balance_wallet_outlined,
             AccountSection.transactions: Icons.receipt_long,
-            AccountSection.orders: Icons.history,
-            AccountSection.notifications: Icons.notifications_none,
           }.entries)
-            ListTile(
-              leading: Icon(entry.value),
-              title: Text(entry.key.title),
-              trailing: const Icon(Icons.chevron_right, size: 18),
-              onTap: () {
-                Navigator.pop(context);
-                _openAccount(context, entry.key);
-              },
-            ),
-          const Divider(),
+            _accountMenuItem(context, entry.key, entry.value),
+          _menuDivider(),
+          _menuLabel('Hoạt động'),
+          _accountMenuItem(context, AccountSection.orders, Icons.history),
           ListTile(
             leading: const Icon(Icons.settings_outlined),
             title: const Text('Cài đặt ứng dụng'),
+            trailing: const Icon(Icons.chevron_right, size: 18),
             onTap: () {
               Navigator.pop(context);
               Navigator.push(
@@ -476,6 +511,7 @@ class HomePage extends StatelessWidget {
               );
             },
           ),
+          _menuDivider(),
           ListTile(
             leading: Icon(controller.online ? Icons.logout : Icons.login),
             title: Text(controller.online ? 'Kết thúc ca' : 'Bắt đầu ca'),
@@ -485,16 +521,86 @@ class HomePage extends StatelessWidget {
               _shift(context, !controller.online);
             },
           ),
+          if (onLogout != null) ...[
+            ListTile(
+              leading: Icon(
+                Icons.logout,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              title: Text(
+                'Đăng xuất',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              onTap: () async {
+                Navigator.pop(context);
+                final confirmed = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Đăng xuất tài khoản?'),
+                    content: const Text(
+                      'Bạn cần đăng nhập lại để tiếp tục sử dụng ứng dụng. Đăng xuất không kết thúc ca hoặc bỏ chuyến đang giao.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Ở lại'),
+                      ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('Đăng xuất'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirmed == true) await onLogout!();
+              },
+            ),
+          ],
           const Padding(
             padding: EdgeInsets.all(20),
             child: Text(
               'MealGo Driver v1.0.0',
+              textAlign: TextAlign.center,
               style: TextStyle(color: AppColors.muted, fontSize: 12),
             ),
           ),
         ],
       ),
     ),
+  );
+
+  Widget _menuLabel(String label) => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+    child: Text(
+      label.toUpperCase(),
+      style: const TextStyle(
+        color: AppColors.muted,
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+
+  Widget _menuDivider() => const Padding(
+    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+    child: Divider(),
+  );
+
+  Widget _accountMenuItem(
+    BuildContext context,
+    AccountSection section,
+    IconData icon,
+  ) => ListTile(
+    leading: Icon(icon, size: 21),
+    title: Text(
+      section == AccountSection.orders ? 'Lịch sử giao hàng' : section.title,
+      style: const TextStyle(fontSize: 14),
+    ),
+    trailing: const Icon(Icons.chevron_right, size: 18),
+    onTap: () {
+      Navigator.pop(context);
+      _openAccount(context, section);
+    },
   );
 
   void _openAccount(BuildContext context, AccountSection section) =>

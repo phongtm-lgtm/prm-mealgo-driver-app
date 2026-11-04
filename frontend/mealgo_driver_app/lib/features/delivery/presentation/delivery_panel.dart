@@ -51,7 +51,7 @@ class DeliveryPanel extends StatelessWidget {
                 const Spacer(),
                 Text(
                   controller.backend != null
-                      ? 'Phí: chưa có dữ liệu'
+                      ? 'Chưa có thông tin phí giao hàng'
                       : '+${money(order.fee)}',
                   style: const TextStyle(
                     color: Color(0xFFA3E97C),
@@ -106,7 +106,7 @@ class DeliveryPanel extends StatelessWidget {
                   const Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      'Thu tiền mặt COD • Không phải thu nhập tài xế',
+                      'Thu tiền mặt từ khách. Khoản này không phải tiền công của bạn.',
                       style: TextStyle(fontSize: 12, color: AppColors.muted),
                     ),
                   ),
@@ -152,7 +152,7 @@ class DeliveryPanel extends StatelessWidget {
                 ),
               ),
           ] else
-            InfoRow('Tiền COD cần thu', money(order.total)),
+            InfoRow('Tiền cần thu từ khách', money(order.total)),
           const SizedBox(height: 12),
         ],
         if (showAction)

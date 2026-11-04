@@ -111,7 +111,7 @@ class _IncidentPageState extends State<IncidentPage> {
             ),
             Text(
               _bytes == null
-                  ? 'Bắt buộc ảnh PNG/JPEG tối đa 5 MB.'
+                  ? 'Thêm ảnh quán đóng cửa (PNG hoặc JPEG, tối đa 5 MB).'
                   : 'Đã đính kèm bằng chứng. Có thể chọn ảnh khác.',
             ),
           ],
@@ -123,7 +123,7 @@ class _IncidentPageState extends State<IncidentPage> {
               _sending
                   ? 'Đang gửi…'
                   : _closed
-                  ? 'Gửi bằng chứng và hủy đơn'
+                  ? 'Gửi ảnh và bỏ chuyến'
                   : 'Xác nhận chuyển đơn',
             ),
           ),
@@ -164,9 +164,9 @@ class _IncidentPageState extends State<IncidentPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: Text(_closed ? 'Đã hủy đơn' : 'Đã trả đơn về hàng chờ'),
+        title: const Text('Đã bỏ chuyến'),
         content: Text(
-          _closed ? 'Máy chủ đã hủy đơn do quán đóng cửa và lưu bằng chứng.' : 'Máy chủ đã giải phóng chuyến của bạn. Đơn đang chờ phân công tài xế khác.',
+          'Bạn không còn phụ trách chuyến này. Đơn hàng vẫn tiếp tục và đang chờ tài xế khác.',
         ),
         actions: [
           TextButton(

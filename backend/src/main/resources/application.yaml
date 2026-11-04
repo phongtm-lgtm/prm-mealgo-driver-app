@@ -28,6 +28,7 @@ app:
     secret: ${JWT_SECRET}
     issuer: mealgo
     ttl-seconds: 3600
+    refresh-ttl-seconds: 2592000
   seed:
     enabled: ${APP_SEED_ENABLED:false}
   storage:

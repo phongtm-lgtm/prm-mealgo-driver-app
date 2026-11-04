@@ -84,6 +84,52 @@ docker compose exec postgres psql -U mealgo -d mealgo_db -c "select id, restaura
 
 ## Auth
 
+## Đối soát tiền công tài xế
+
+Tiền công hiện do DriverAccountService trong monolith ghi vào driver_earnings, không phải Wallet Service riêng. `APP_DRIVER_EARNING_PER_DELIVERY` là mức tiền công cố định được vận hành xác nhận; không phải phí ship hoặc tiền thu hộ. Không tự đặt giá trị này nếu chưa có chính sách được duyệt.
+
+Nếu cấu hình không dương, hoàn tất giao hàng vẫn thành công nhưng khoản tiền công được lưu riêng vào pending_driver_earnings. Không tạo giao dịch 0đ, không cộng ví và không đưa khoản chờ vào tổng thu nhập. Trạng thái resolved/resolvedAt/resolvedBy ghi nhận đối soát; khóa tài xế và unique deliveryId bảo vệ cộng trùng.
+
+- ADMIN: `GET /api/v1/admin/driver-earnings/pending` (page, size) xem khoản chờ.
+- ADMIN: `POST /api/v1/admin/driver-earnings/{deliveryId}/reconcile`, body `{"amount": SO_TIEN_DA_DUOC_XAC_NHAN}`. Phải nhập số nguyên VND dương theo chính sách đã xác nhận, không suy ra từ phí ship. Gọi lại khoản đã xử lý không cộng lần hai. Ghi nhận vào ví/thu nhập tại thời điểm đối soát, không sửa tổng lịch sử của ngày giao.
+- Job mỗi 60 giây chuyển các placeholder cũ amount=0/rateConfigured=false sang khoản chờ, xóa placeholder khỏi ledger; không xóa/sửa khoản có tiền. Restart/retry không tự cộng tiền. Các khoản chờ được xử lý thủ công qua API admin, không tự lấy cấu hình mới áp cho chuyến cũ. Vận hành phải theo dõi danh sách pending và log lỗi.
+- DTO ví/giao dịch hiện có không đổi. Số tiền chờ chưa xác định không được hiển thị như 0đ hoặc cộng vào balance. `completedDeliveries` trong earnings là số chuyến đã ghi nhận tiền công, không bao gồm khoản đang chờ; lịch sử giao hàng vẫn giữ trạng thái giao thành công.
+
+### Access token và refresh token
+
+- Login/đăng ký trả thêm `refreshToken`. Access token mặc định sống 1 giờ (`app.jwt.ttl-seconds`); phiên refresh sống tối đa 30 ngày kể từ đăng nhập (`app.jwt.refresh-ttl-seconds`), không kéo dài hạn khi đổi token.
+- `POST /api/v1/auth/refresh`, body `{ "refreshToken": "..." }`: không gửi Authorization; trả access token và refresh token mới. Token cũ dùng một lần; dùng lại sẽ thu hồi cả phiên refresh đó. Refresh token là chuỗi ngẫu nhiên, chỉ lưu SHA-256 trong database, khóa dòng khi đổi token.
+- `POST /api/v1/auth/logout`, cùng body: thu hồi phiên refresh hiện tại, trả 204. Các phiên trên thiết bị khác không bị ảnh hưởng. Access JWT đã phát vẫn hợp lệ đến khi hết hạn; chưa có blacklist access token.
+- Flutter lưu hai token bằng FlutterSecureStorage. Khi nhận 401 ở yêu cầu đã đăng nhập, app đổi token và thử lại đúng một lần; các yêu cầu đồng thời dùng chung một lần đổi token. Áp dụng cho JSON, upload ảnh và kết nối lại SSE. Lỗi kết nối/5xx khi gia hạn không tự xóa phiên.
+- Đăng xuất offline xóa phiên trên thiết bị nhưng không bảo đảm thu hồi refresh token phía backend. Cần HTTPS khi triển khai thực tế. Trên web, storage không thay thế được HttpOnly cookie và không bảo vệ trước mã JavaScript độc hại/XSS; các tab không đồng bộ khóa gia hạn, nên tránh dùng chung phiên qua nhiều tab. Nếu phản hồi đổi token bị mất sau khi backend đã lưu, lần dùng lại token cũ sẽ thu hồi phiên và yêu cầu đăng nhập lại.
+- Backend cần khởi động/rebuild để có bảng `refresh_sessions` theo cơ chế schema hiện tại. Người dùng đăng nhập trước bản cập nhật cần đăng nhập lại một lần để nhận refresh token.
+
+### Đăng ký đối tác tài xế (OTP giả lập phát triển)
+
+Flutter: Đăng nhập → Đăng ký làm đối tác tài xế → OTP → hồ sơ cá nhân → phương tiện và 4 ảnh giấy tờ → kiểm tra/gửi → chờ admin duyệt. Tài khoản chưa có hồ sơ được duyệt không thể vào ca. Tài xế demo/đã tồn tại giữ nguyên trạng thái active, không tự động khóa dữ liệu cũ.
+
+- `POST /api/v1/auth/register/start`: `{ "phoneNumber": "0934567890", "password": "Password123!" }`.
+- Response chứa `registrationId`, `mode=MOCK_DEVELOPMENT_ONLY`, `devOtp`, `expiresAt`, `resendAt`. Không gửi SMS thật. Phiên OTP lưu trong RAM, mất khi backend restart; triển khai này chỉ dành cho một instance phát triển.
+- `POST /api/v1/auth/register/verify`: `{ "registrationId": "UUID", "otp": "6 số" }`; thành công trả JWT DRIVER. Chỉ tạo tài khoản sau OTP hợp lệ.
+- `POST /api/v1/auth/register/resend`: `{ "registrationId": "UUID" }`. Mỗi mã sống 5 phút, chờ 60 giây gửi lại, tối đa 5 lần nhập sai. OTP/mật khẩu lưu dạng hash trong phiên. Chưa tích hợp SMS/rate limit phân tán cho production.
+- Public `/auth/register` chỉ tạo CUSTOMER; không tạo DRIVER/MERCHANT/ADMIN để tránh bỏ qua OTP.
+- Mock OTP: local bật mặc định, Docker Compose phát triển bật qua `APP_OTP_MOCK_ENABLED` (đặt false khi không cần). Mặc định ứng dụng tắt; từ chối mock nếu có profile prod/production.
+
+API hồ sơ dùng JWT DRIVER:
+
+- `GET /api/v1/drivers/me/application`: tạo/lấy bản nháp, trả `applicationId` và trạng thái.
+- `PUT /api/v1/drivers/me/application`: fullName, birthDate (`YYYY-MM-DD`), address, identityNumber (12 số), vehicleType, licensePlate, drivingLicense.
+- `POST /api/v1/drivers/me/application/documents/{type}` multipart `image`; type: IDENTITY_FRONT, IDENTITY_BACK, VEHICLE_REGISTRATION, DRIVING_LICENSE. PNG/JPEG thật, tối đa 5 MB/25 megapixels. Lưu bucket private `driver-documents`; không trả object key.
+- `POST /api/v1/drivers/me/application/submit`: đủ thông tin/4 ảnh mới chuyển DRAFT → PENDING_REVIEW, khóa chỉnh sửa.
+- Bản hiện tại lưu nháp khi đủ thông tin cá nhân và xe; chưa tự lưu từng trường/ảnh xem trước. Ảnh thay thế có thể còn object mồ côi, cần retention/cleanup trước production.
+
+Admin dùng Postman collection `postman/driver-onboarding.postman_collection.json`. Bật seed development tạo SĐT `0900000004`, mật khẩu `Mealgo123!`, role ADMIN; không dùng tài khoản này ở production. Login để lấy `adminToken`, điền `applicationId` từ màn chờ duyệt.
+
+- `GET /api/v1/admin/driver-applications/{id}` xem hồ sơ.
+- `GET /api/v1/admin/driver-applications/{id}/documents/{type}` tải ảnh private (chỉ ADMIN).
+- `POST /api/v1/admin/driver-applications/{id}/approve` body `{ "note": "Hồ sơ hợp lệ" }`: duyệt PENDING_REVIEW, lưu reviewedBy/reviewedAt, tạo/kích hoạt hồ sơ tài xế. Gọi lại APPROVED không tạo hồ sơ trùng.
+- Tài xế bấm Kiểm tra trạng thái sau khi admin duyệt để vào trang chính. Chưa triển khai từ chối/yêu cầu bổ sung, OTP thật, UI admin.
+
 ```http
 POST /api/v1/auth/login
 Content-Type: application/json
@@ -160,9 +206,12 @@ Prefix `/api/v1/merchant/restaurants/{restaurantId}/orders`.
 | GET | /{orderId} | Chi tiết đơn, tài xế và trạng thái giao |
 | POST | /{orderId}/accept | `{ "estimatedPreparationMinutes": 20 }` |
 | POST | /{orderId}/reject | `{ "reason": "Hết nguyên liệu" }` |
+| POST | /{orderId}/cancel | `{ "reason": "Hết nguyên liệu" }`; chỉ PENDING/PREPARING, từ READY trả 409 |
 | POST | /{orderId}/ready | Không cần body |
 
 Chỉ owner của quán có quyền. Accept tạo chuyến giao trong cùng transaction. Không có API CRUD menu/quán hoặc báo cáo doanh thu.
+
+Quy tắc hủy: khách chỉ hủy khi PENDING (trước khi quán nhận). Nhà hàng dùng `/cancel` khi PENDING hoặc PREPARING; hủy đồng thời chuyến giao và các offer còn hiệu lực, thông báo SSE cho tài xế liên quan. `/reject` vẫn chỉ từ chối đơn PENDING. Tài xế báo incident/bỏ chuyến chỉ khi Order PREPARING và chưa lấy hàng; từ READY trả 409. Mọi lý do incident, kể cả RESTAURANT_CLOSED, chỉ bỏ chuyến để tìm tài xế khác, không hủy đơn khách; lý do quán đóng vẫn yêu cầu ảnh/GPS. Dispatcher không mời lại tài xế đã bỏ chuyến. Frontend phải xử lý 409 nếu quán chuyển READY cùng lúc thao tác hủy.
 
 ## API Driver / Delivery
 

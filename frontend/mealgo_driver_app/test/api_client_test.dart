@@ -6,6 +6,49 @@ import 'package:http/testing.dart';
 import 'package:mealgo_driver_app/api_client.dart';
 
 void main() {
+  test(
+    'concurrent 401 requests rotate once and retry with fresh token',
+    () async {
+      final api = ApiClient(
+        client: MockClient(
+          (request) async => request.headers['Authorization'] == 'Bearer fresh'
+              ? http.Response('{"ok":true}', 200)
+              : http.Response('', 401),
+        ),
+      );
+      api.token = 'old';
+      var rotations = 0;
+      api.onRefresh = () async {
+        rotations++;
+        await Future<void>.delayed(Duration.zero);
+        api.token = 'fresh';
+        return true;
+      };
+      final results = await Future.wait([
+        api.request('GET', '/one'),
+        api.request('GET', '/two'),
+      ]);
+      expect(rotations, 1);
+      expect(results.every((r) => r['ok'] == true), isTrue);
+      api.close();
+    },
+  );
+  test('refresh connection failure does not expire session', () async {
+    final api = ApiClient(
+      client: MockClient((_) async => http.Response('', 401)),
+    );
+    api.token = 'old';
+    var expired = false;
+    api.onUnauthorized = () => expired = true;
+    api.onRefresh = () async => throw ApiException(0, 'Không kết nối được');
+    await expectLater(
+      api.request('GET', '/one'),
+      throwsA(isA<ApiException>().having((e) => e.status, 'status', 0)),
+    );
+    expect(expired, isFalse);
+    expect(api.token, 'old');
+    api.close();
+  });
   test('uploads camera image to face verification with JWT', () async {
     final api = ApiClient(
       client: MockClient((request) async {

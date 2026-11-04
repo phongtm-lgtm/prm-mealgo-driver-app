@@ -1,0 +1,9 @@
+{
+  "info": {"name": "MealGo Driver Onboarding", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+  "variable": [{"key":"baseUrl","value":"http://localhost:8080"},{"key":"adminToken","value":""},{"key":"applicationId","value":""}],
+  "item": [
+    {"name":"Admin login (development only)","event":[{"listen":"test","script":{"exec":["if (pm.response.code === 200) pm.collectionVariables.set('adminToken', pm.response.json().accessToken);"],"type":"text/javascript"}}],"request":{"method":"POST","header":[{"key":"Content-Type","value":"application/json"}],"url":"{{baseUrl}}/api/v1/auth/login","body":{"mode":"raw","raw":"{\"phoneNumber\":\"0900000004\",\"password\":\"Mealgo123!\"}"}}},
+    {"name":"Review application","request":{"method":"GET","header":[{"key":"Authorization","value":"Bearer {{adminToken}}"}],"url":"{{baseUrl}}/api/v1/admin/driver-applications/{{applicationId}}"}},
+    {"name":"Approve driver application","request":{"method":"POST","header":[{"key":"Authorization","value":"Bearer {{adminToken}}"},{"key":"Content-Type","value":"application/json"}],"url":"{{baseUrl}}/api/v1/admin/driver-applications/{{applicationId}}/approve","body":{"mode":"raw","raw":"{\"note\":\"Hồ sơ và giấy tờ hợp lệ\"}"}}}
+  ]
+}

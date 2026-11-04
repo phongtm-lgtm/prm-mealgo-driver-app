@@ -39,6 +39,7 @@ class DriverController extends ChangeNotifier {
   bool initialized = false;
   bool showingActive = false;
   String? error;
+  bool lastRequestConnectionFailed = false;
   bool serverUnavailable = false;
 
   bool _isServerFailure(Object exception) =>
@@ -69,12 +70,15 @@ class DriverController extends ChangeNotifier {
   Future<bool> _run(Future<void> Function() action) async {
     if (busy || _disposed) return false;
     busy = true;
+    lastRequestConnectionFailed = false;
     error = null;
     _notify();
     try {
       await action();
       return true;
     } catch (exception) {
+      lastRequestConnectionFailed =
+          exception is ApiException && exception.status == 0;
       if (_isServerFailure(exception)) serverUnavailable = true;
       error = exception is StateError
           ? exception.message.toString()
@@ -144,7 +148,7 @@ class DriverController extends ChangeNotifier {
   Future<void> updateLocation() async {
     if (backend == null) return;
     final ok = await backend!.store.sendLocation();
-    error = ok ? 'Đã cập nhật vị trí GPS thật.' : backend!.store.gpsError;
+    error = ok ? 'Đã cập nhật vị trí của bạn.' : backend!.store.gpsError;
     _notify();
   }
 
@@ -219,7 +223,7 @@ class DriverController extends ChangeNotifier {
       throw StateError('Chuyến hiện tại đã thay đổi. Hãy làm mới.');
     final repository = _dependencies.delivery;
     if (repository is! DeliveryIncidentRepository)
-      throw StateError('Chưa kết nối API xử lý sự cố.');
+      throw StateError('Chưa thể gửi thông tin sự cố. Vui lòng thử lại.');
     lastIncident = await (repository as DeliveryIncidentRepository)
         .submitIncident(deliveryId, reason, note, requestId, bytes, filename);
     activeOrder = null;
@@ -247,8 +251,7 @@ class DriverController extends ChangeNotifier {
   /// Explicit demo trigger instead of pretending to receive a server event.
   bool simulateOffer() {
     if (backend != null) {
-      error =
-          'Offer thật được đồng bộ từ máy chủ mỗi 5 giây; không tạo offer giả.';
+      error = 'Đơn mới sẽ tự cập nhật khi có lời mời dành cho bạn.';
       _notify();
       return false;
     }

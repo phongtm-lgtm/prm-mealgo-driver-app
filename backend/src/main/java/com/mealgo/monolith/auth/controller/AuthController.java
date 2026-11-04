@@ -11,4 +11,7 @@ public class AuthController {
     @PostMapping("/register") @ResponseStatus(HttpStatus.CREATED)
     public Token register(@Valid @RequestBody Register request) { return auth.register(request); }
     @PostMapping("/login") public Token login(@Valid @RequestBody Login request) { return auth.login(request); }
+    @PostMapping("/refresh") public Token refresh(@Valid @RequestBody Refresh request) { return auth.refresh(request); }
+    @PostMapping("/logout") @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(@Valid @RequestBody Refresh request) { auth.logout(request); }
 }

@@ -3,3 +3,6 @@ spring:
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
+app:
+  otp:
+    mock-enabled: ${APP_OTP_MOCK_ENABLED:false}

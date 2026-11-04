@@ -1,12 +1,61 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mealgo_driver_app/app.dart';
+import 'package:mealgo_driver_app/features/home/presentation/home_page.dart';
 import 'package:mealgo_driver_app/app/app_dependencies.dart';
 import 'package:mealgo_driver_app/features/home/presentation/driver_controller.dart';
 import 'package:mealgo_driver_app/features/driver/presentation/settings_page.dart';
 import 'package:mealgo_driver_app/shared/widgets/app_widgets.dart';
 
 void main() {
+  testWidgets('Logout requires confirmation and can be cancelled', (
+    tester,
+  ) async {
+    final controller = DriverController(AppDependencies.mock());
+    await tester.runAsync(controller.initialize);
+    var logoutCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomePage(
+          controller: controller,
+          onLogout: () async {
+            logoutCount++;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final scaffold = tester.state<ScaffoldState>(find.byType(Scaffold).first);
+    scaffold.openDrawer();
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('Đăng xuất'),
+      250,
+      scrollable: find
+          .descendant(
+            of: find.byType(Drawer),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.tap(find.text('Đăng xuất'));
+    await tester.pumpAndSettle();
+    expect(logoutCount, 0);
+    await tester.tap(find.text('Ở lại'));
+    await tester.pumpAndSettle();
+    expect(logoutCount, 0);
+    scaffold.openDrawer();
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Đăng xuất'), 250,
+      scrollable: find.descendant(of: find.byType(Drawer), matching: find.byType(Scrollable)).first);
+    await tester.tap(find.text('Đăng xuất'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Đăng xuất'));
+    await tester.pumpAndSettle();
+    expect(logoutCount, 1);
+    await tester.pumpWidget(const SizedBox.shrink());
+    controller.dispose();
+  });
   testWidgets('Slide action fills its track and submits at the visible edge', (
     tester,
   ) async {
@@ -55,8 +104,12 @@ void main() {
       MaterialApp(home: SettingsPage(controller: controller)),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Khoảng cách giao hàng'), findsOneWidget);
-    expect(find.text('Số lượng món tối đa'), findsOneWidget);
+    expect(find.text('Khoảng cách nhận đơn'), findsOneWidget);
+    expect(find.text('Chỉ nhận đơn trong phạm vi bạn chọn.'), findsOneWidget);
+    expect(find.text('Số món tối đa trong một đơn'), findsOneWidget);
+    expect(find.text('Số tiền cần ứng tối đa'), findsOneWidget);
+    expect(find.textContaining('máy chủ'), findsNothing);
+    expect(find.textContaining('COD'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     controller.dispose();
@@ -79,9 +132,7 @@ void main() {
     controller.dispose();
   });
 
-  testWidgets('Shift control appears only in the sidebar', (
-    tester,
-  ) async {
+  testWidgets('Shift control appears only in the sidebar', (tester) async {
     await tester.pumpWidget(
       MealGoDriverApp(dependencies: AppDependencies.mock()),
     );
