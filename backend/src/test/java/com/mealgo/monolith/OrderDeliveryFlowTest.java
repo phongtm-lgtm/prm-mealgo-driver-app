@@ -145,7 +145,7 @@ class OrderDeliveryFlowTest {
         var restaurant=restaurants.findAll().getFirst(); var item=menu.findAll().getFirst();
         Map<String,Object> body=Map.of("restaurantId",restaurant.getId(),"items",List.of(Map.of("menuItemId",item.getId(),"quantity",2)),
                 "recipient",Map.of("name","Customer","phone","0901234567"),
-                "dropoff",Map.of("address","Delivery address","latitude",10.78,"longitude",106.70),"paymentMethod","COD");
+                "dropoff",Map.of("address","Delivery address","latitude",21.05,"longitude",105.54),"paymentMethod","COD");
         String key=UUID.randomUUID().toString();
         var placed=call(post("/api/v1/customers/me/orders").header("Idempotency-Key",key).content(json.writeValueAsString(body)),customer,201);
         String id=placed.get("orderId").asText(); assertEquals(105000,placed.get("total").asInt());
@@ -167,12 +167,12 @@ class OrderDeliveryFlowTest {
         String path="/api/v1/drivers/me/deliveries/"+delivery;
         call(post(path+"/arrive-at-pickup"),driver,409);
         String session=call(post("/api/v1/drivers/me/tracking-session"),driver,201).get("trackingSessionId").asText();
-        location(driver,session,1,10.7626,106.6823);
+        location(driver,session,1,21.038214,105.547018);
         call(post(path+"/arrive-at-pickup"),driver,200);
         call(post(path+"/confirm-pickup"),driver,409);
         call(post(merchantPath+"/ready"),merchant,200);
         call(post(path+"/confirm-pickup"),driver,200);
-        location(driver,session,2,10.78,106.70);
+        location(driver,session,2,21.05,105.54);
         call(post(path+"/arrive-at-dropoff"),driver,200);
         call(post(path+"/confirm-delivery"),driver,200);
         call(post(path+"/confirm-delivery"),driver,200);
@@ -204,14 +204,14 @@ class OrderDeliveryFlowTest {
         call(post("/api/v1/drivers/me/offers/"+secondAssignment+"/accept"),driver,200);
         String secondDelivery=call(get("/api/v1/drivers/me/deliveries/current"),driver,200).get("deliveryId").asText();
         String secondPath="/api/v1/drivers/me/deliveries/"+secondDelivery;
-        location(driver,session,3,10.7626,106.6823);
+        location(driver,session,3,21.038214,105.547018);
         call(post(secondPath+"/arrive-at-pickup"),driver,200);
         call(post(secondMerchant+"/ready"),merchant,200);
         call(post(secondPath+"/confirm-pickup"),driver,200);
         mvc.perform(multipart(secondPath+"/incident").param("assignmentId",secondAssignment)
             .param("requestId",UUID.randomUUID().toString()).param("reason","PERSONAL")
             .header("Authorization","Bearer "+driver)).andExpect(status().isConflict());
-        location(driver,session,4,10.78,106.70);
+        location(driver,session,4,21.05,105.54);
         call(post(secondPath+"/arrive-at-dropoff"),driver,200);
         var bytes=new ByteArrayOutputStream(); ImageIO.write(new BufferedImage(2,2,BufferedImage.TYPE_INT_RGB),"png",bytes);
         String requestId=UUID.randomUUID().toString();
@@ -230,10 +230,10 @@ class OrderDeliveryFlowTest {
         String driver=login("driver.demo"), merchant=login("merchant.demo"), customer=login("customer.demo");
         var restaurant=restaurants.findAll().getFirst(); var item=menu.findAll().getFirst();
         var body=Map.of("restaurantId",restaurant.getId(),"items",List.of(Map.of("menuItemId",item.getId(),"quantity",1)),
-            "recipient",Map.of("name","Customer","phone","0901234567"),"dropoff",Map.of("address","Address","latitude",10.78,"longitude",106.70),"paymentMethod","COD");
+            "recipient",Map.of("name","Customer","phone","0901234567"),"dropoff",Map.of("address","Address","latitude",21.05,"longitude",105.54),"paymentMethod","COD");
         call(put("/api/v1/drivers/me/online-status").content("{\"online\":true}"),driver,200);
         String session=call(post("/api/v1/drivers/me/tracking-session"),driver,201).get("trackingSessionId").asText();
-        location(driver,session,1,10.7626,106.6823);
+        location(driver,session,1,21.038214,105.547018);
         for(String reason:List.of("PERSONAL","RESTAURANT_DELAY","RESTAURANT_CLOSED")) {
             String order=call(post("/api/v1/customers/me/orders").header("Idempotency-Key",UUID.randomUUID().toString()).content(json.writeValueAsString(body)),customer,201).get("orderId").asText();
             call(post("/api/v1/merchant/restaurants/"+restaurant.getId()+"/orders/"+order+"/accept").content("{\"estimatedPreparationMinutes\":10}"),merchant,200);
@@ -262,7 +262,7 @@ class OrderDeliveryFlowTest {
         String driver=login("driver.demo"), merchant=login("merchant.demo"), customer=login("customer.demo");
         var restaurant=restaurants.findAll().getFirst(); var item=menu.findAll().getFirst();
         var body=Map.of("restaurantId",restaurant.getId(),"items",List.of(Map.of("menuItemId",item.getId(),"quantity",1)),
-            "recipient",Map.of("name","Customer","phone","0901234567"),"dropoff",Map.of("address","Address","latitude",10.78,"longitude",106.70),"paymentMethod","COD");
+            "recipient",Map.of("name","Customer","phone","0901234567"),"dropoff",Map.of("address","Address","latitude",21.05,"longitude",105.54),"paymentMethod","COD");
         call(put("/api/v1/drivers/me/online-status").content("{\"online\":true}"),driver,200);
         for(boolean ready:List.of(false,true)) {
             String order=call(post("/api/v1/customers/me/orders").header("Idempotency-Key",UUID.randomUUID().toString()).content(json.writeValueAsString(body)),customer,201).get("orderId").asText();

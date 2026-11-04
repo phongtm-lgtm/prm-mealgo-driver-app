@@ -21,7 +21,7 @@ docker compose exec -T postgres psql -U mealgo -d mealgo_db -c "select id, name,
 - Đổi người nhận và tọa độ giao tại Variables. Giá trị ban đầu đặt điểm giao gần
   quán để dễ thử. GPS tài xế phải ở gần điểm lấy/giao tương ứng; không bỏ qua kiểm tra GPS.
 - Giả lập Pixel 7: Extended Controls → Location → đặt vị trí gần quán
-  `10.7626, 106.6823`, sau đó cập nhật GPS trên app. Điện thoại thật:
+  `21.038214, 105.547018`, sau đó cập nhật GPS trên app. Điện thoại thật:
   dùng tọa độ quán/điểm giao phù hợp địa điểm kiểm thử thực tế.
 
 ## Luồng thành công

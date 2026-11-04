@@ -262,8 +262,8 @@ Body vị trí:
 {
   "trackingSessionId": "SESSION_UUID",
   "sequence": 1,
-  "latitude": 10.7626,
-  "longitude": 106.6823,
+  "latitude": 21.038214,
+  "longitude": 105.547018,
   "accuracyMeters": 10,
   "recordedAt": "2026-11-02T08:00:00Z"
 }
