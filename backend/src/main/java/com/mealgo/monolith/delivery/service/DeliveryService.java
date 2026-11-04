@@ -40,6 +40,7 @@ public class DeliveryService {
     private final DeliveryMapper mapper;
     private final ProximityService proximity;
     private final EvidenceStorage storage;
+    private final DriverEventService events;
     private final com.mealgo.monolith.driver.service.DriverAccountService accounts;
 
     @Transactional public void create(Order order) {
@@ -70,6 +71,7 @@ public class DeliveryService {
             d.setDriverId(driver.getId()); d.setAssignmentId(a.getId()); d.setStatus(DeliveryStatus.ASSIGNED); d.setUpdatedAt(Instant.now());
         }
         a.setStatus(target); a.setRespondedAt(Instant.now());
+        events.changedAfterCommit(driver.getId());
         return mapper.offer(a,orders.get(d.getOrderId()));
     }
     @Transactional(readOnly=true) public Optional<Current> current() {

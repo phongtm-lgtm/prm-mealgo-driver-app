@@ -236,7 +236,13 @@ Failure reason: `CUSTOMER_UNREACHABLE`, `CUSTOMER_REFUSED`, `OTHER`. Chỉ báo 
 8. Driver confirm-delivery hoặc failure-report.
 9. Customer xem order/tracking; merchant xem detail; driver xem history.
 
-Dispatcher MVP chọn tài xế online đầu tiên còn rảnh, offer 60 giây, mỗi chuyến không mời lại tài xế đã từ chối/hết hạn. Không có tối ưu khoảng cách, push notification hoặc retry vô hạn: nếu hết ứng viên chuyến ở PENDING_ASSIGNMENT. Client poll danh sách offers. Dự kiến chạy một replica backend cho MVP; cần harden concurrency/dispatch trước khi scale nhiều instance.
+Dispatcher MVP chọn tài xế online đầu tiên còn rảnh, offer 60 giây, mỗi chuyến không mời lại tài xế đã từ chối/hết hạn. Không có tối ưu khoảng cách, push notification hoặc retry vô hạn: nếu hết ứng viên chuyến ở PENDING_ASSIGNMENT. Dự kiến chạy một replica backend cho MVP; cần harden concurrency/dispatch trước khi scale nhiều instance.
+
+### SSE cho tài xế
+
+`GET /api/v1/drivers/me/events`, header `Authorization: Bearer <JWT>`, role DRIVER và hồ sơ tài xế bắt buộc. Response `text/event-stream`: `connected` khi kết nối, `orders-changed` khi offer được tạo/hết hạn/nhận/từ chối, `heartbeat` mỗi 15 giây. Sự kiện chỉ gửi cho đúng driver, sau transaction commit; payload `{}` chỉ yêu cầu client tải lại offers/current, không chứa dữ liệu đơn. Không truyền JWT trên URL.
+
+Flutter Android tự reconnect với backoff 2–32 giây và tải lại dữ liệu sau mỗi kết nối để bù sự kiện bị lỡ; polling dự phòng mỗi 30 giây. Stream hết hạn sau 5 phút để kết nối lại và xác thực JWT. Không có replay/event log, không thay thế FCM khi app chạy nền. Subscription hiện lưu trong bộ nhớ một backend instance; nhiều replica cần pub/sub dùng chung. Nếu triển khai reverse proxy, tắt buffering cho endpoint SSE. Flutter web với HTTP client mặc định chưa được xác minh khả năng stream; bản này ưu tiên Android và vẫn giữ polling dự phòng.
 
 ## Lưu ý triển khai
 

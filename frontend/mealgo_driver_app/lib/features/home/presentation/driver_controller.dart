@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../../app/app_dependencies.dart';
 import '../../../app/backend_repositories.dart';
+import '../../../driver_event_stream.dart';
+import '../../../api_client.dart';
 import '../../account/domain/account_repository.dart';
 import '../../account/presentation/account_state.dart';
 import '../../delivery/domain/delivery.dart';
@@ -37,6 +39,11 @@ class DriverController extends ChangeNotifier {
   bool initialized = false;
   bool showingActive = false;
   String? error;
+  bool serverUnavailable = false;
+
+  bool _isServerFailure(Object exception) =>
+      exception is ApiException &&
+      (exception.status == 0 || exception.status >= 500);
   int completedToday = 0;
   int earnedToday = 0;
   int rejectedOffers = 0;
@@ -46,6 +53,8 @@ class DriverController extends ChangeNotifier {
   int offerSeconds = 0;
   Timer? _offerTimer;
   Timer? _pollTimer;
+  DriverEventStream? _events;
+  bool _refreshPending = false;
   bool _polling = false;
   BackendRepositories? get backend =>
       _dependencies.delivery is BackendRepositories
@@ -66,6 +75,7 @@ class DriverController extends ChangeNotifier {
       await action();
       return true;
     } catch (exception) {
+      if (_isServerFailure(exception)) serverUnavailable = true;
       error = exception is StateError
           ? exception.message.toString()
           : exception.toString();
@@ -73,6 +83,7 @@ class DriverController extends ChangeNotifier {
     } finally {
       busy = false;
       _notify();
+      if (_refreshPending && !_disposed) _pollBackend();
     }
   }
 
@@ -96,27 +107,37 @@ class DriverController extends ChangeNotifier {
         ..clear()
         ..addAll(await backend!.history());
       _pollTimer ??= Timer.periodic(
-        const Duration(seconds: 5),
+        const Duration(seconds: 30),
         (_) => _pollBackend(),
       );
+      _events ??= DriverEventStream(backend!.store.api, () {
+        _refreshPending = true;
+        _pollBackend();
+      })..connect();
     }
+    serverUnavailable = false;
   });
 
   Future<void> _pollBackend() async {
     if (busy || _polling || _disposed || backend == null) return;
     _polling = true;
+    _refreshPending = false;
     try {
       _available = await backend!.getAvailable();
       activeOrder = await backend!.current();
       online = backend!.store.profile?['onlineStatus'] == 'ONLINE';
       if (!_available.any((o) => o.id == selectedOrder?.id))
         selectedOrder = null;
+      if (serverUnavailable) error = null;
+      serverUnavailable = false;
       _notify();
     } catch (e) {
+      if (_isServerFailure(e)) serverUnavailable = true;
       error = e.toString();
       _notify();
     } finally {
       _polling = false;
+      if (_refreshPending && !_disposed && !busy) _pollBackend();
     }
   }
 
@@ -285,6 +306,7 @@ class DriverController extends ChangeNotifier {
   void dispose() {
     account?.dispose();
     _pollTimer?.cancel();
+    _events?.dispose();
     _disposed = true;
     _clearOffer();
     super.dispose();

@@ -5,6 +5,7 @@ import '../../../core/delivery_distance.dart';
 import '../../../core/formatters.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/app_widgets.dart';
+import '../../../shared/widgets/server_error_view.dart';
 import '../../account/presentation/account_page.dart';
 import '../../delivery/presentation/delivery_panel.dart';
 import '../../driver/presentation/settings_page.dart';
@@ -19,6 +20,12 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
     builder: (context, _) {
+      if (controller.serverUnavailable) {
+        return ServerErrorView(
+          loading: controller.busy,
+          onRetry: () => controller.initialize(),
+        );
+      }
       if (!controller.initialized) {
         return Scaffold(
           body: Center(
@@ -38,7 +45,7 @@ class HomePage extends StatelessWidget {
         );
       }
       return Scaffold(
-        backgroundColor: AppColors.ink,
+        backgroundColor: AppColors.background,
         appBar: AppBar(
           titleSpacing: 0,
           title: Row(
@@ -137,10 +144,10 @@ class HomePage extends StatelessWidget {
               ),
             Expanded(
               child: LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      SizedBox(
+                builder: (context, constraints) => CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: SizedBox(
                         height: (constraints.maxHeight * .46).clamp(
                           200.0,
                           430.0,
@@ -185,7 +192,18 @@ class HomePage extends StatelessWidget {
                           ],
                         ),
                       ),
-                      Container(
+                    ),
+                    SliverToBoxAdapter(
+                      child: Container(
+                        constraints: BoxConstraints(
+                          minHeight:
+                              (constraints.maxHeight -
+                                      (constraints.maxHeight * .46).clamp(
+                                        200.0,
+                                        430.0,
+                                      ))
+                                  .clamp(0.0, double.infinity),
+                        ),
                         width: double.infinity,
                         decoration: const BoxDecoration(
                           color: AppColors.background,
@@ -196,10 +214,6 @@ class HomePage extends StatelessWidget {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            const DemoNotice(
-                              text: 'Đơn hàng được đồng bộ từ máy chủ. Bản đồ, ví, thu nhập và đánh giá chưa được hỗ trợ.',
-                            ),
-                            const SizedBox(height: 12),
                             if (controller.offer != null) ...[
                               SectionCard(
                                 title:
@@ -296,18 +310,7 @@ class HomePage extends StatelessWidget {
                                   ],
                                 ),
                               ),
-                              if (!controller.online) ...[
-                                const Padding(
-                                  padding: EdgeInsets.all(12),
-                                  child: Text(
-                                    'Bạn đang ngoài ca. Mở menu bên để bắt đầu ca làm việc.',
-                                    style: TextStyle(
-                                      color: AppColors.muted,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ] else ...[
+                              if (controller.online) ...[
                                 Row(
                                   children: [
                                     Text(
@@ -372,8 +375,8 @@ class HomePage extends StatelessWidget {
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),

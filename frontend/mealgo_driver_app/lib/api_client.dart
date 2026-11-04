@@ -36,7 +36,7 @@ class ApiClient {
     } catch (_) {
       throw ApiException(
         0,
-        'Không kết nối được máy chủ. Kiểm tra backend và địa chỉ API.',
+        'Không kết nối được máy chủ',
       );
     }
   }

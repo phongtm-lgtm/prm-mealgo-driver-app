@@ -28,30 +28,6 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         const SizedBox(height: 16),
         SectionCard(
-          title: 'Nhận đơn tự động',
-          child: Column(
-            children: [
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Tự động nhận đơn'),
-                subtitle: const Text(
-                  'Chỉ lưu tùy chọn; hiện vẫn cần xác nhận nhận đơn thủ công.',
-                ),
-                value: _draft.autoAccept,
-                onChanged: _saving
-                    ? null
-                    : (v) => setState(
-                        () => _draft = _draft.copyWith(autoAccept: v),
-                      ),
-              ),
-              const Text(
-                'Trạng thái và thời hạn đề nghị do máy chủ quyết định.',
-                style: TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-        SectionCard(
           title: 'Khoảng cách giao hàng',
           child: Column(
             children: [
