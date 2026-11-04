@@ -13,10 +13,12 @@ class RegistrationPage extends StatefulWidget {
 
 class _RegistrationPageState extends State<RegistrationPage> {
   final form = GlobalKey<FormState>();
+  final confirmKey = GlobalKey<FormFieldState<String>>();
   final phone = TextEditingController(), password = TextEditingController();
   final confirm = TextEditingController(), otp = TextEditingController();
   Map<String, dynamic>? challenge;
   bool busy = false, agreed = false, hidden = true;
+  bool confirmHidden = true;
   String? error;
   Timer? timer;
   int get remaining => challenge == null
@@ -64,37 +66,87 @@ class _RegistrationPageState extends State<RegistrationPage> {
               if (challenge == null) ...[
                 TextFormField(
                   controller: phone,
+                  enabled: !busy,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Số điện thoại'),
-                  validator: (v) =>
-                      RegExp(r'^(?:0|\+84)[35789][0-9]{8}$').hasMatch(v!.trim())
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.telephoneNumberNational],
+                  decoration: const InputDecoration(
+                    labelText: 'Số điện thoại',
+                    hintText: 'Ví dụ: 0901234567',
+                  ),
+                  validator: (v) => (v ?? '').trim().isEmpty
+                      ? 'Vui lòng nhập số điện thoại.'
+                      : RegExp(r'^(?:0|\+84)[35789][0-9]{8}$')
+                            .hasMatch(v!.trim())
                       ? null
-                      : 'Số điện thoại không hợp lệ',
+                      : 'Nhập số di động Việt Nam, bắt đầu bằng 0 hoặc +84.',
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: password,
+                  enabled: !busy,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  textInputAction: TextInputAction.next,
+                  autofillHints: const [AutofillHints.newPassword],
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  onChanged: (_) {
+                    if (confirm.text.isNotEmpty)
+                      confirmKey.currentState?.validate();
+                  },
                   obscureText: hidden,
                   decoration: InputDecoration(
                     labelText: 'Mật khẩu',
+                    helperText: 'Từ 8–72 ký tự.',
+                    errorMaxLines: 2,
                     suffixIcon: IconButton(
                       onPressed: () => setState(() => hidden = !hidden),
-                      icon: const Icon(Icons.visibility),
+                      tooltip: hidden ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
+                      icon: Icon(
+                        hidden
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
                     ),
                   ),
-                  validator: (v) => v!.length >= 8 && v.length <= 72
+                  validator: (v) => (v ?? '').isEmpty
+                      ? 'Vui lòng nhập mật khẩu.'
+                      : v!.length >= 8 && v.length <= 72
                       ? null
                       : 'Mật khẩu từ 8–72 ký tự',
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
+                  key: confirmKey,
                   controller: confirm,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  enabled: !busy,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textInputAction: TextInputAction.done,
+                  obscureText: confirmHidden,
+                  decoration: InputDecoration(
                     labelText: 'Xác nhận mật khẩu',
+                    errorMaxLines: 2,
+                    suffixIcon: IconButton(
+                      tooltip: confirmHidden
+                          ? 'Hiện xác nhận mật khẩu'
+                          : 'Ẩn xác nhận mật khẩu',
+                      onPressed: () =>
+                          setState(() => confirmHidden = !confirmHidden),
+                      icon: Icon(
+                        confirmHidden
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                    ),
                   ),
-                  validator: (v) =>
-                      v == password.text ? null : 'Mật khẩu không khớp',
+                  validator: (v) => (v ?? '').isEmpty
+                      ? 'Vui lòng nhập lại mật khẩu.'
+                      : v == password.text
+                      ? null
+                      : 'Mật khẩu xác nhận chưa khớp.',
                 ),
                 CheckboxListTile(
                   value: agreed,
@@ -149,7 +201,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
               if (error != null)
                 Text(error!, style: const TextStyle(color: Colors.red)),
               FilledButton(
-                onPressed: busy
+                onPressed: busy || (challenge == null && !agreed)
                     ? null
                     : () {
                         if (!form.currentState!.validate()) return;
