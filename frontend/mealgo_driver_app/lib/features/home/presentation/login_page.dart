@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../driver_store.dart';
+import 'registration_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key, required this.store});
@@ -72,6 +73,17 @@ class _LoginPageState extends State<LoginPage> {
                     child: Text(
                       widget.store.busy ? 'Đang đăng nhập…' : 'Đăng nhập',
                     ),
+                  ),
+                  TextButton(
+                    onPressed: widget.store.busy
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  RegistrationPage(store: widget.store),
+                            ),
+                          ),
+                    child: const Text('Đăng ký làm đối tác tài xế'),
                   ),
                 ],
               ),

@@ -55,6 +55,10 @@ public class RestaurantOrderService {
         orders.require(o,OrderStatus.PREPARING); o.setStatus(OrderStatus.READY); o.setReadyAt(Instant.now()); o.setUpdatedAt(Instant.now());
         return mapper.toResponse(o);
     }
+    @Transactional public OrderResponse cancel(UUID restaurantId,UUID orderId,Reject r) {
+        authorize(restaurantId); belongs(orders.get(orderId),restaurantId);
+        return mapper.toResponse(deliveries.cancelByRestaurant(orderId,r.reason()));
+    }
     private void authorize(UUID id) {
         var r = restaurants.findById(id).orElseThrow(() -> ApiException.notFound("Restaurant not found"));
         if (!r.getOwnerId().equals(current.id())) throw ApiException.notFound("Restaurant not found");

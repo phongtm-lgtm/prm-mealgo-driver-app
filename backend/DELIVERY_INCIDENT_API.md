@@ -8,7 +8,7 @@ Tất cả API dưới đây yêu cầu Bearer token DRIVER. Không gọi UI gi�
 frontend dùng DeliveryIncidentRepository và DriverController, phát invalidation
 cho AccountState sau thành công.
 
-## Chuyển đơn hoặc hủy vì quán đóng cửa
+## Báo sự cố và giải phóng chuyến trước lấy hàng
 
 `POST /api/v1/drivers/me/deliveries/{deliveryId}/incident` (multipart/form-data):
 
@@ -18,16 +18,16 @@ cho AccountState sau thành công.
 - note: tối đa 1000 ký tự.
 - image: bắt buộc cho RESTAURANT_CLOSED, PNG/JPEG tối đa 5 MB, 25 megapixel.
 
-Chỉ được thực hiện trước khi lấy hàng (ASSIGNED/AT_PICKUP), đơn PREPARING/READY.
+Chỉ được thực hiện trước khi lấy hàng (ASSIGNED/AT_PICKUP), đơn phải PREPARING; READY bị từ chối với 409.
 Quán đóng cửa cần GPS mới và chính xác gần quán; ảnh chỉ được kiểm tra định dạng,
-không có AI xác minh nội dung ảnh. Chính sách đã chọn: hủy ngay không chờ duyệt.
+không có AI xác minh nội dung ảnh. API này giải phóng chuyến, không hủy đơn khách.
 
-PERSONAL/RESTAURANT_DELAY: kết quả PENDING_REASSIGNMENT, xóa phân công trên
-chuyến, trả về PENDING_ASSIGNMENT; đơn vẫn PREPARING/READY. Không hứa đã có
+Mọi reason, kể cả RESTAURANT_CLOSED: kết quả PENDING_REASSIGNMENT, xóa phân công trên
+chuyến, trả về PENDING_ASSIGNMENT; đơn vẫn PREPARING. Không hứa đã có
 tài xế khác nhận. Dispatcher không mời lại tài xế cũ trên cùng chuyến.
 
-RESTAURANT_CLOSED: kết quả CANCELLED, đơn và chuyến CANCELLED; bằng chứng
-lưu trong object storage. Không ghi tiền công hay bồi thường.
+RESTAURANT_CLOSED bắt buộc ảnh được lưu trong object storage và kiểm tra vị trí gần quán.
+PERSONAL/RESTAURANT_DELAY không nhận ảnh không rỗng. Không ghi tiền công hay bồi thường.
 
 Response: id, deliveryId, assignmentId, reason, outcome, note, createdAt.
 Unique assignmentId và khóa driver/delivery bảo vệ thao tác trùng; retry cùng nội dung
@@ -36,7 +36,23 @@ trả cùng biên nhận ngay cả sau khi đổi tài xế. Nội dung khác tr
 `GET /api/v1/drivers/me/deliveries/incidents`: biên nhận sự cố của tài xế hiện tại.
 `GET /api/v1/drivers/me/deliveries/incidents/{incidentId}/evidence`: ảnh riêng tư của
 tài xế đã báo cáo, no-store. Biên nhận chuyển đơn vẫn tồn tại sau khi đổi tài xế.
-Chuyến CANCELLED xuất hiện trong lịch sử và chi tiết lịch sử của tài xế hủy.
+Chuyến đã giải phóng không còn thuộc tài xế nên không xuất hiện trong lịch sử chuyến của người báo;
+tra cứu biên nhận bằng danh sách incidents. outcome ghi kết quả lúc báo, không phản ánh phân công mới nhất.
+
+### HTTP response của thao tác báo sự cố
+
+- `200`: trả JSON biên nhận; retry cùng assignmentId, requestId, reason, note và nội dung ảnh trả biên nhận đã lưu.
+- `400`: UUID/tham số bắt buộc thiếu hoặc sai; reason không hợp lệ; note quá 1000 ký tự;
+  ảnh thiếu khi RESTAURANT_CLOSED hoặc gửi ảnh cho reason khác; ảnh rỗng, không phải PNG/JPEG,
+  vượt 5 MiB hoặc 25 triệu pixel.
+- `401`: thiếu Bearer JWT, JWT không hợp lệ hoặc hết hạn; body từ security filter không được bảo đảm là ProblemDetail.
+- `403`: tài khoản đã xác thực nhưng không có quyền DRIVER.
+- `404`: thiếu hồ sơ Driver, không tìm thấy chuyến thuộc tài xế, assignmentId không khớp,
+  hoặc bản ghi retry không thuộc tài xế/chuyến được yêu cầu.
+- `409`: trạng thái chuyến/đơn không cho giải phóng; retry khác dữ liệu; với RESTAURANT_CLOSED,
+  GPS không đủ mới/chính xác/gần nhà hàng.
+- `413`: multipart vượt giới hạn tiếp nhận (5 MB mỗi tệp, 6 MB toàn request).
+- `503`: kho bằng chứng không khả dụng khi lưu ảnh.
 
 ## Báo giao thất bại
 

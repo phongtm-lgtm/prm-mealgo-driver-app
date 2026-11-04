@@ -19,4 +19,5 @@ public class RestaurantOrderController {
     @PostMapping("/{orderId}/accept") public OrderResponse accept(@PathVariable UUID restaurantId,@PathVariable UUID orderId,@Valid @RequestBody Accept r) { return service.accept(restaurantId,orderId,r); }
     @PostMapping("/{orderId}/reject") public OrderResponse reject(@PathVariable UUID restaurantId,@PathVariable UUID orderId,@Valid @RequestBody Reject r) { return service.reject(restaurantId,orderId,r); }
     @PostMapping("/{orderId}/ready") public OrderResponse ready(@PathVariable UUID restaurantId,@PathVariable UUID orderId) { return service.ready(restaurantId,orderId); }
+    @PostMapping("/{orderId}/cancel") public OrderResponse cancel(@PathVariable UUID restaurantId,@PathVariable UUID orderId,@Valid @RequestBody Reject r) { return service.cancel(restaurantId,orderId,r); }
 }

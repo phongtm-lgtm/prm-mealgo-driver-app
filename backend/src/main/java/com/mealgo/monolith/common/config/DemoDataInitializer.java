@@ -29,7 +29,7 @@ public class DemoDataInitializer implements ApplicationRunner {
         }
         if (restaurants.count()==0) {
             var r = new Restaurant(); r.setOwnerId(merchant.getId()); r.setName("MealGo Demo Restaurant");
-            r.setPhone("0900000002"); r.setAddress("123 Nguyen Trai, Ho Chi Minh City"); r.setLatitude(10.7626); r.setLongitude(106.6823);
+            r.setPhone("0900000002"); r.setAddress("123 Nguyen Trai, Ho Chi Minh City"); r.setLatitude(21.038214); r.setLongitude(105.547018);
             restaurants.save(r);
             var item = new MenuItem(); item.setRestaurantId(r.getId()); item.setName("Com ga"); item.setPrice(new BigDecimal("45000")); menu.save(item);
         }

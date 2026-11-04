@@ -111,7 +111,7 @@ PUT {{baseUrl}}/api/v1/drivers/me/location
 Authorization: Bearer {{driverToken}}
 Content-Type: application/json
 
-{"trackingSessionId":"{{sessionId}}","sequence":1,"latitude":10.7626,"longitude":106.6823,"accuracyMeters":10,"recordedAt":"REPLACE_CURRENT_UTC_INSTANT"}
+{"trackingSessionId":"{{sessionId}}","sequence":1,"latitude":21.038214,"longitude":105.547018,"accuracyMeters":10,"recordedAt":"REPLACE_CURRENT_UTC_INSTANT"}
 
 ### Arrive at restaurant
 POST {{baseUrl}}/api/v1/drivers/me/deliveries/{{deliveryId}}/arrive-at-pickup

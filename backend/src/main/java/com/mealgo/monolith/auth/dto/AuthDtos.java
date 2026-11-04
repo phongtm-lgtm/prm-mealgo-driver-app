@@ -7,5 +7,6 @@ public final class AuthDtos {
     public record Register(@NotBlank @Size(max=32) String phoneNumber,
                            @NotBlank @Size(min=8,max=72) String password, @NotNull Role role) {}
     public record Login(@NotBlank @Size(max=32) String phoneNumber, @NotBlank @Size(max=72) String password) {}
-    public record Token(String accessToken, String tokenType, long expiresIn, UUID userId, Role role) {}
+    public record Token(String accessToken, String tokenType, long expiresIn, UUID userId, Role role, String refreshToken) {}
+    public record Refresh(@NotBlank @Size(max=200) String refreshToken) {}
 }

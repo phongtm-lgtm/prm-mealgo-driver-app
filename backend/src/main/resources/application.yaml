@@ -15,6 +15,16 @@ server:
   port: 8080
   error:
     include-message: never
+springdoc:
+  api-docs:
+    version: OPENAPI_3_1
+  use-fqn: true
+  override-with-generic-response: false
+  paths-to-match: /api/v1/**
+  swagger-ui:
+    persist-authorization: false
+    tags-sorter: alpha
+    operations-sorter: alpha
 management:
   endpoints:
     web:
@@ -28,6 +38,7 @@ app:
     secret: ${JWT_SECRET}
     issuer: mealgo
     ttl-seconds: 3600
+    refresh-ttl-seconds: 2592000
   seed:
     enabled: ${APP_SEED_ENABLED:false}
   storage:

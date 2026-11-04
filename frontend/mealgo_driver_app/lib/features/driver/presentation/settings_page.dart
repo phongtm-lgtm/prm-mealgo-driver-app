@@ -16,6 +16,8 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   late DriverSettings _draft = widget.controller.settings;
   bool _saving = false;
+  String get _distance =>
+      _draft.maxDistance.toStringAsFixed(1).replaceAll('.', ',');
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -23,45 +25,20 @@ class _SettingsPageState extends State<SettingsPage> {
     body: ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const DemoNotice(
-          text: 'Cài đặt được lưu trên máy chủ. Khoảng cách tính đường chim bay từ quán đến khách.',
-        ),
-        const SizedBox(height: 16),
         SectionCard(
-          title: 'Nhận đơn tự động',
+          title: 'Khoảng cách nhận đơn',
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Tự động nhận đơn'),
-                subtitle: const Text(
-                  'Chỉ lưu tùy chọn; hiện vẫn cần xác nhận nhận đơn thủ công.',
-                ),
-                value: _draft.autoAccept,
-                onChanged: _saving
-                    ? null
-                    : (v) => setState(
-                        () => _draft = _draft.copyWith(autoAccept: v),
-                      ),
-              ),
-              const Text(
-                'Trạng thái và thời hạn đề nghị do máy chủ quyết định.',
-                style: TextStyle(fontSize: 12),
-              ),
-            ],
-          ),
-        ),
-        SectionCard(
-          title: 'Khoảng cách giao hàng',
-          child: Column(
-            children: [
-              Text('Tối đa ${_draft.maxDistance.toStringAsFixed(1)} km'),
+              const Text('Chỉ nhận đơn trong phạm vi bạn chọn.'),
+              const SizedBox(height: 12),
+              Text('Tối đa $_distance km'),
               Slider(
                 value: _draft.maxDistance,
                 min: 0.1,
                 max: 100,
                 divisions: 999,
-                label: '${_draft.maxDistance.round()} km',
+                label: '$_distance km',
                 onChanged: _saving
                     ? null
                     : (v) => setState(
@@ -72,13 +49,16 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
         SectionCard(
-          title: 'Giới hạn nhận đơn',
+          title: 'Đơn hàng bạn muốn nhận',
           child: Column(
             children: [
               DropdownButtonFormField<int>(
+                isExpanded: true,
                 initialValue: _draft.maxItems,
                 decoration: const InputDecoration(
-                  labelText: 'Số lượng món tối đa',
+                  labelText: 'Số món tối đa trong một đơn',
+                  helperText: 'Chọn số món nhiều nhất bạn có thể giao.',
+                  helperMaxLines: 2,
                 ),
                 items:
                     ({1, 3, 5, 10, 20, 50, 100, 5000, _draft.maxItems}.toList()
@@ -95,16 +75,23 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<int>(
+                isExpanded: true,
                 initialValue: _draft.maxAdvance,
                 decoration: const InputDecoration(
-                  labelText: 'Tiền trả quán tối đa',
+                  labelText: 'Số tiền cần ứng tối đa',
+                  helperText: 'Số tiền bạn sẵn sàng trả trước khi lấy hàng.',
+                  helperMaxLines: 2,
                 ),
                 items:
                     ({0, 100000, 200000, 500000, _draft.maxAdvance}.toList()
                           ..sort())
                         .map(
-                          (v) =>
-                              DropdownMenuItem(value: v, child: Text(money(v))),
+                          (v) => DropdownMenuItem(
+                            value: v,
+                            child: Text(
+                              v == 0 ? '0 đ — Không ứng tiền' : money(v),
+                            ),
+                          ),
                         )
                         .toList(),
                 onChanged: _saving
@@ -113,18 +100,16 @@ class _SettingsPageState extends State<SettingsPage> {
                         () => _draft = _draft.copyWith(maxAdvance: v),
                       ),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Máy chủ lọc tổng số phần ăn và khoảng cách. Luồng COD hiện không cần ứng tiền quán (0đ).',
-                style: TextStyle(fontSize: 12),
-              ),
             ],
           ),
         ),
         SectionCard(
           child: SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Thông báo trong ứng dụng'),
+            title: const Text('Nhận thông báo'),
+            subtitle: const Text(
+              'Cập nhật đơn mới và những thông tin quan trọng.',
+            ),
             value: _draft.notifications,
             onChanged: _saving
                 ? null
@@ -138,19 +123,19 @@ class _SettingsPageState extends State<SettingsPage> {
               ? null
               : () async {
                   setState(() => _saving = true);
+                  ScaffoldMessenger.of(context).removeCurrentSnackBar();
                   final ok = await widget.controller.saveSettings(_draft);
                   if (!context.mounted) return;
                   setState(() => _saving = false);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        ok
-                            ? 'Đã lưu cài đặt lên máy chủ'
-                            : (widget.controller.error ??
-                                  'Không thể lưu. Vui lòng thử lại. Có thể một phần cài đặt đã được lưu.'),
-                      ),
-                    ),
-                  );
+                  final message = ok
+                      ? 'Đã lưu thay đổi của bạn.'
+                      : widget.controller.lastRequestConnectionFailed
+                      ? 'Không có kết nối mạng. Hãy kiểm tra và thử lại.'
+                      : 'Chưa thể lưu thay đổi. Vui lòng thử lại.';
+                  widget.controller.clearError();
+                  ScaffoldMessenger.of(context).removeCurrentSnackBar();
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(message)));
                 },
           child: Text(_saving ? 'Đang lưu…' : 'Lưu cài đặt'),
         ),

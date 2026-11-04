@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../../app/app_dependencies.dart';
 import '../../../app/backend_repositories.dart';
+import '../../../driver_event_stream.dart';
+import '../../../api_client.dart';
 import '../../account/domain/account_repository.dart';
 import '../../account/presentation/account_state.dart';
 import '../../delivery/domain/delivery.dart';
@@ -37,6 +39,12 @@ class DriverController extends ChangeNotifier {
   bool initialized = false;
   bool showingActive = false;
   String? error;
+  bool lastRequestConnectionFailed = false;
+  bool serverUnavailable = false;
+
+  bool _isServerFailure(Object exception) =>
+      exception is ApiException &&
+      (exception.status == 0 || exception.status >= 500);
   int completedToday = 0;
   int earnedToday = 0;
   int rejectedOffers = 0;
@@ -46,6 +54,8 @@ class DriverController extends ChangeNotifier {
   int offerSeconds = 0;
   Timer? _offerTimer;
   Timer? _pollTimer;
+  DriverEventStream? _events;
+  bool _refreshPending = false;
   bool _polling = false;
   BackendRepositories? get backend =>
       _dependencies.delivery is BackendRepositories
@@ -60,12 +70,16 @@ class DriverController extends ChangeNotifier {
   Future<bool> _run(Future<void> Function() action) async {
     if (busy || _disposed) return false;
     busy = true;
+    lastRequestConnectionFailed = false;
     error = null;
     _notify();
     try {
       await action();
       return true;
     } catch (exception) {
+      lastRequestConnectionFailed =
+          exception is ApiException && exception.status == 0;
+      if (_isServerFailure(exception)) serverUnavailable = true;
       error = exception is StateError
           ? exception.message.toString()
           : exception.toString();
@@ -73,6 +87,7 @@ class DriverController extends ChangeNotifier {
     } finally {
       busy = false;
       _notify();
+      if (_refreshPending && !_disposed) _pollBackend();
     }
   }
 
@@ -96,34 +111,44 @@ class DriverController extends ChangeNotifier {
         ..clear()
         ..addAll(await backend!.history());
       _pollTimer ??= Timer.periodic(
-        const Duration(seconds: 5),
+        const Duration(seconds: 30),
         (_) => _pollBackend(),
       );
+      _events ??= DriverEventStream(backend!.store.api, () {
+        _refreshPending = true;
+        _pollBackend();
+      })..connect();
     }
+    serverUnavailable = false;
   });
 
   Future<void> _pollBackend() async {
     if (busy || _polling || _disposed || backend == null) return;
     _polling = true;
+    _refreshPending = false;
     try {
       _available = await backend!.getAvailable();
       activeOrder = await backend!.current();
       online = backend!.store.profile?['onlineStatus'] == 'ONLINE';
       if (!_available.any((o) => o.id == selectedOrder?.id))
         selectedOrder = null;
+      if (serverUnavailable) error = null;
+      serverUnavailable = false;
       _notify();
     } catch (e) {
+      if (_isServerFailure(e)) serverUnavailable = true;
       error = e.toString();
       _notify();
     } finally {
       _polling = false;
+      if (_refreshPending && !_disposed && !busy) _pollBackend();
     }
   }
 
   Future<void> updateLocation() async {
     if (backend == null) return;
     final ok = await backend!.store.sendLocation();
-    error = ok ? 'Đã cập nhật vị trí GPS thật.' : backend!.store.gpsError;
+    error = ok ? 'Đã cập nhật vị trí của bạn.' : backend!.store.gpsError;
     _notify();
   }
 
@@ -198,7 +223,7 @@ class DriverController extends ChangeNotifier {
       throw StateError('Chuyến hiện tại đã thay đổi. Hãy làm mới.');
     final repository = _dependencies.delivery;
     if (repository is! DeliveryIncidentRepository)
-      throw StateError('Chưa kết nối API xử lý sự cố.');
+      throw StateError('Chưa thể gửi thông tin sự cố. Vui lòng thử lại.');
     lastIncident = await (repository as DeliveryIncidentRepository)
         .submitIncident(deliveryId, reason, note, requestId, bytes, filename);
     activeOrder = null;
@@ -226,8 +251,7 @@ class DriverController extends ChangeNotifier {
   /// Explicit demo trigger instead of pretending to receive a server event.
   bool simulateOffer() {
     if (backend != null) {
-      error =
-          'Offer thật được đồng bộ từ máy chủ mỗi 5 giây; không tạo offer giả.';
+      error = 'Đơn mới sẽ tự cập nhật khi có lời mời dành cho bạn.';
       _notify();
       return false;
     }
@@ -285,6 +309,7 @@ class DriverController extends ChangeNotifier {
   void dispose() {
     account?.dispose();
     _pollTimer?.cancel();
+    _events?.dispose();
     _disposed = true;
     _clearOffer();
     super.dispose();

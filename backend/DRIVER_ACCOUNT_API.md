@@ -52,7 +52,8 @@ Không thay đổi quyền camera/GPS/notification Android, không đăng ký pu
 - Tuần bắt đầu thứ Hai. Khoảng ngày trả về là bao gồm hai đầu.
 - Response: period, fromDate, toDate, timezone, completedDeliveries, totalEarnings,
   currency=VND, earningsConfigured, chart (date, completedDeliveries, earnings).
-- Chart gồm đủ từng ngày, kể cả ngày 0 đơn. Đếm các lần hoàn tất được ghi nhận từ khi tính năng này triển khai.
+- Chart gồm đủ từng ngày, kể cả ngày 0 tiền công. completedDeliveries đếm bản ghi tiền công đã xác định,
+  không đếm chuyến đang chờ xác nhận tiền. Khoản đối soát tính theo ngày ghi giao dịch, không hồi tố ngày giao.
 
 ## Ví và giao dịch
 
@@ -71,7 +72,11 @@ Ví dụ nếu thống nhất 15.000 VND/chuyến thành công thì đặt biế
 Mỗi chuyến ghi đúng một lần trong cùng transaction với confirm-delivery, có unique deliveryId;
 retry không cộng trùng, chuyến FAILED không cộng. Số tiền được chốt tại thời điểm hoàn tất,
 đổi cấu hình không tính lại lịch sử. Các chuyến DELIVERED trước triển khai không tự backfill.
-Nếu hoàn tất lúc chưa cấu hình tiền công, sổ ghi amount=0 kèm mô tả chưa cấu hình; không tự trả bù sau đó.
+Nếu hoàn tất lúc chưa cấu hình tiền công dương, tạo nghĩa vụ trong pending_driver_earnings,
+không tạo giao dịch 0 đồng và không cộng ví/thu nhập. ADMIN xác nhận số tiền qua
+`POST /admin/driver-earnings/{deliveryId}/reconcile`; thành công `200` không body, retry khoản đã resolved không cộng lại.
+Không tự dùng cấu hình mới trả bù cho chuyến cũ. earningsConfigured chỉ phản ánh cấu hình hiện tại,
+không bảo đảm mọi chuyến quá khứ đã được ghi tiền công.
 
 ## Thông báo
 
@@ -81,12 +86,13 @@ Nếu hoàn tất lúc chưa cấu hình tiền công, sổ ghi amount=0 kèm m�
 - `PATCH /drivers/me/notifications/read-all`: 204.
 
 Thông báo gồm id, type, title, message, referenceId (deliveryId), read, createdAt.
-Hiện tạo thông báo DELIVERY_COMPLETED khi giao thành công; chưa có các nguồn thông báo khác.
+Hiện dùng type=DELIVERY_COMPLETED cho thông báo tiền công khi hoàn tất giao, đối soát hoặc chuyển dữ liệu tiền công cũ sang chờ xử lý.
+Chỉ tạo khi bật thông báo trong ứng dụng; chưa có push notification/SMS/email.
 
 ## Lịch sử giao hàng
 
 - `GET /drivers/me/deliveries/history?page=0&size=20` (đã có).
-- `GET /drivers/me/deliveries/history/{deliveryId}`: chỉ chuyến DELIVERED/FAILED thuộc tài xế.
+- `GET /drivers/me/deliveries/history/{deliveryId}`: chỉ chuyến DELIVERED/FAILED/CANCELLED còn thuộc tài xế.
 
 Chi tiết sử dụng DTO chuyến giao hiện có. Tiền công xem giao dịch ví theo deliveryId;
 chưa bổ sung tiền công vào DTO chuyến giao để không phá hợp đồng tích hợp hiện tại.

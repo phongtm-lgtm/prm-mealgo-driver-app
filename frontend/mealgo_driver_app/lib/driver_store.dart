@@ -15,6 +15,11 @@ class DriverStore extends ChangeNotifier {
   bool initializing = true, busy = false, refreshing = false;
   bool authenticated = false, needsRegistration = false, loadingHistory = false;
   bool hasNextHistory = false;
+  Map<String, dynamic>? application;
+  bool get needsApplication =>
+      authenticated &&
+      (needsRegistration ||
+          (profile != null && profile!['accountStatus'] != 'ACTIVE'));
   int historyPage = 0;
   String? error, gpsError;
   Position? position;
@@ -28,6 +33,7 @@ class DriverStore extends ChangeNotifier {
   DateTime? lastSync;
   Timer? _poll, _gps;
   String? _session;
+  String? _refreshToken;
   int _sequence = 0, _generation = 0;
   bool _sendingGps = false, _disposed = false;
   Completer<bool>? _gpsCompleter;
@@ -38,6 +44,7 @@ class DriverStore extends ChangeNotifier {
     this.api.onUnauthorized = () {
       unawaited(logout());
     };
+    this.api.onRefresh = _refreshAccessToken;
   }
   void changed() {
     if (!_disposed) notifyListeners();
@@ -46,6 +53,7 @@ class DriverStore extends ChangeNotifier {
   Future<void> init() async {
     try {
       api.token = await storage.read(key: 'access_token');
+      _refreshToken = await storage.read(key: 'refresh_token');
       if (api.token != null) {
         authenticated = true;
         await refresh();
@@ -71,6 +79,12 @@ class DriverStore extends ChangeNotifier {
       if (data['role'] != 'DRIVER')
         throw ApiException(403, 'Tài khoản này không phải tài xế.');
       await storage.write(key: 'access_token', value: data['accessToken']);
+      _refreshToken = data['refreshToken'] as String?;
+      if (_refreshToken != null) {
+        await storage.write(key: 'refresh_token', value: _refreshToken);
+      } else {
+        await storage.delete(key: 'refresh_token');
+      }
       api.token = data['accessToken'];
       authenticated = true;
       await refresh();
@@ -91,12 +105,15 @@ class DriverStore extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    final refresh = _refreshToken;
+    _refreshToken = null;
     _generation++;
     _poll?.cancel();
     _gps?.cancel();
     api.token = null;
     authenticated = false;
     needsRegistration = false;
+    application = null;
     profile = null;
     delivery = null;
     offers = [];
@@ -107,10 +124,52 @@ class DriverStore extends ChangeNotifier {
     error = null;
     try {
       await storage.delete(key: 'access_token');
+      await storage.delete(key: 'refresh_token');
     } catch (_) {
       /* Session remains cleared in memory. */
     }
     changed();
+    if (refresh != null) {
+      try {
+        await api.request('POST', '/auth/logout', {'refreshToken': refresh});
+      } catch (_) {
+        // Offline logout still clears the local session.
+      }
+    }
+  }
+
+  Future<bool> _refreshAccessToken() async {
+    final refresh = _refreshToken;
+    final generation = _generation;
+    if (refresh == null) return false;
+    try {
+      final data = await api.request('POST', '/auth/refresh', {
+        'refreshToken': refresh,
+      });
+      if (generation != _generation) {
+        try {
+          await api.request('POST', '/auth/logout', {
+            'refreshToken': data['refreshToken'],
+          });
+        } catch (_) {}
+        return false;
+      }
+      final access = data['accessToken'] as String;
+      final rotated = data['refreshToken'] as String;
+      await storage.write(key: 'refresh_token', value: rotated);
+      await storage.write(key: 'access_token', value: access);
+      if (generation != _generation) {
+        await storage.delete(key: 'access_token');
+        await storage.delete(key: 'refresh_token');
+        return false;
+      }
+      _refreshToken = rotated;
+      api.token = access;
+      return true;
+    } on ApiException catch (e) {
+      if (e.status == 401 || e.status == 400) return false;
+      rethrow;
+    }
   }
 
   Future<void> run(Future<void> Function() action) async {

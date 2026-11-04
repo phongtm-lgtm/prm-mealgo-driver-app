@@ -13,6 +13,7 @@ public class DispatchService {
     private final DriverRepository drivers;
     private final DeliveryRepository deliveries;
     private final AssignmentRepository assignments;
+    private final DriverEventService events;
     private final com.mealgo.monolith.order.service.OrderService orders;
     private final com.mealgo.monolith.driver.service.DriverAccountService accounts;
     private final ProximityService proximity;
@@ -20,7 +21,10 @@ public class DispatchService {
 
     @Transactional public void dispatch() {
         var now = Instant.now();
-        for (var a : assignments.findByStatusAndExpiresAtBefore(AssignmentStatus.OFFERED,now)) a.setStatus(AssignmentStatus.EXPIRED);
+        for (var a : assignments.findByStatusAndExpiresAtBefore(AssignmentStatus.OFFERED,now)) {
+            a.setStatus(AssignmentStatus.EXPIRED);
+            events.changedAfterCommit(a.getDriverId());
+        }
         // MVP: deterministic first-available dispatch; no repeat offers to the same driver for a delivery.
         for (var candidate : drivers.findByOnlineTrueAndActiveTrueOrderById()) {
             var driver = drivers.findLockedById(candidate.getId()).orElseThrow();
@@ -37,7 +41,9 @@ public class DispatchService {
                 if(km>settings.maxDeliveryDistanceKm() || order.getItems().stream().mapToInt(i->i.getQuantity()).sum()>settings.maxItemQuantity()) continue;
                 // Current COD flow requires no restaurant advance, so zero satisfies every valid advance limit.
                 var a = new Assignment(); a.setDriverId(driver.getId()); a.setDeliveryId(d.getId()); a.setExpiresAt(now.plusSeconds(offerSeconds));
-                assignments.save(a); break;
+                assignments.save(a);
+                events.changedAfterCommit(driver.getId());
+                break;
             }
         }
     }

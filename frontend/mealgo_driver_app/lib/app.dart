@@ -6,6 +6,7 @@ import 'features/home/presentation/driver_controller.dart';
 import 'features/home/presentation/home_page.dart';
 import 'features/home/presentation/login_page.dart';
 import 'driver_store.dart';
+import 'features/home/presentation/application_page.dart';
 
 class MealGoDriverApp extends StatefulWidget {
   const MealGoDriverApp({super.key, this.dependencies});
@@ -19,6 +20,8 @@ class MealGoDriverApp extends StatefulWidget {
 class _MealGoDriverAppState extends State<MealGoDriverApp> {
   final _store = DriverStore();
   DriverController? _controller;
+  GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+  bool _wasAuthenticated = false;
   @override
   void initState() {
     super.initState();
@@ -31,7 +34,16 @@ class _MealGoDriverAppState extends State<MealGoDriverApp> {
   }
 
   void _sessionChanged() {
-    if (_store.authenticated && !_store.initializing && _controller == null) {
+    if (_wasAuthenticated && !_store.authenticated) {
+      // Drop every authenticated route, including pages above the dashboard.
+      _navigatorKey = GlobalKey<NavigatorState>();
+    }
+    _wasAuthenticated = _store.authenticated;
+    if (_store.authenticated &&
+        !_store.initializing &&
+        !_store.needsApplication &&
+        _store.profile != null &&
+        _controller == null) {
       _controller = DriverController(AppDependencies.backend(_store))
         ..initialize();
     } else if (!_store.authenticated && _controller != null) {
@@ -52,11 +64,17 @@ class _MealGoDriverAppState extends State<MealGoDriverApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'MealGo Driver',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
-      home: _controller != null
-          ? HomePage(controller: _controller!)
+      home: _store.needsApplication
+          ? ApplicationPage(store: _store)
+          : _controller != null
+          ? HomePage(
+              controller: _controller!,
+              onLogout: widget.dependencies == null ? _store.logout : null,
+            )
           : _store.initializing
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : LoginPage(store: _store),

@@ -8,9 +8,12 @@ import java.time.Instant;
 import java.util.*;
 public interface DriverEarningRepository extends JpaRepository<DriverEarning,UUID> {
     boolean existsByDeliveryId(UUID deliveryId);
+    Optional<DriverEarning> findByDeliveryId(UUID deliveryId);
+    Page<DriverEarning> findByRateConfiguredFalse(Pageable page);
+    Page<DriverEarning> findByDriverIdAndRateConfiguredTrue(UUID driverId,Pageable page);
     Optional<DriverEarning> findByIdAndDriverId(UUID id,UUID driverId);
     Page<DriverEarning> findByDriverId(UUID driverId,Pageable page);
     List<DriverEarning> findByDriverIdAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(UUID driverId,Instant start,Instant end);
-    @Query("select coalesce(sum(e.amount),0) from DriverEarning e where e.driverId=:driverId")
+    @Query("select coalesce(sum(e.amount),0) from DriverEarning e where e.driverId=:driverId and e.rateConfigured=true")
     BigDecimal balance(@Param("driverId") UUID driverId);
 }

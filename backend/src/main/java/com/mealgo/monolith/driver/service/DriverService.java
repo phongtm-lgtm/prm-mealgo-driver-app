@@ -21,7 +21,7 @@ public class DriverService {
     @Value("${app.delivery.location-max-age-seconds}") private long maxAge;
     @Transactional public UUID register(ProfileRequest r) {
         if (drivers.existsByUserId(current.id())) throw ApiException.conflict("Driver already registered");
-        var d = new Driver(); d.setUserId(current.id()); d.setFullName(r.fullName()); d.setPhoneNumber(r.phoneNumber());
+        var d = new Driver(); d.setActive(false); d.setUserId(current.id()); d.setFullName(r.fullName()); d.setPhoneNumber(r.phoneNumber());
         return drivers.save(d).getId();
     }
     @Transactional(readOnly=true) public Profile profile() { return mapper.toResponse(myDriver()); }
