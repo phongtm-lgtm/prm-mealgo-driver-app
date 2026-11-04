@@ -81,17 +81,21 @@ public class DriverAccountService {
 
     /** Caller holds driver lock. This joins delivery completion's transaction. */
     @Transactional public void completed(Driver driver,UUID deliveryId,Instant deliveredAt) {
+        completed(driver, deliveryId, deliveredAt, null);
+    }
+    @Transactional public void completed(Driver driver,UUID deliveryId,Instant deliveredAt, BigDecimal fee) {
         if(earnings.existsByDeliveryId(deliveryId)) return;
         if(pendingEarnings.existsById(deliveryId)) return;
-        if(rate.signum()<=0) {
+        var earn = rate.signum() > 0 ? rate : (fee != null && fee.signum() > 0 ? fee : rate);
+        if(earn.signum()<=0) {
             var p=new PendingDriverEarning(); p.setDeliveryId(deliveryId); p.setDriverId(driver.getId()); p.setDeliveredAt(deliveredAt); pendingEarnings.save(p);
             log.error("Driver earning pending: deliveryId={}, driverId={}, app.driver.earning-per-delivery={}; explicit admin reconciliation required",deliveryId,driver.getId(),rate);
             notifyEarning(driver,deliveryId,null);
             return;
         }
-        var e=new DriverEarning(); e.setDriverId(driver.getId()); e.setDeliveryId(deliveryId); e.setAmount(rate);
-        e.setRateConfigured(rate.signum()>0); e.setBalanceAfter(earnings.balance(driver.getId()).add(rate)); e.setCreatedAt(deliveredAt); earnings.save(e);
-        notifyEarning(driver,deliveryId,rate);
+        var e=new DriverEarning(); e.setDriverId(driver.getId()); e.setDeliveryId(deliveryId); e.setAmount(earn);
+        e.setRateConfigured(earn.signum()>0); e.setBalanceAfter(earnings.balance(driver.getId()).add(earn)); e.setCreatedAt(deliveredAt); earnings.save(e);
+        notifyEarning(driver,deliveryId,earn);
     }
     private void notifyEarning(Driver driver,UUID deliveryId,BigDecimal amount) {
         if(!Boolean.FALSE.equals(driver.getInAppNotificationsEnabled())) {
@@ -133,6 +137,7 @@ public class DriverAccountService {
                 log.warn("Recovered legacy unpaid earning: deliveryId={}",e.getDeliveryId());
             }
             earnings.delete(e);
+
         }
     }
 }

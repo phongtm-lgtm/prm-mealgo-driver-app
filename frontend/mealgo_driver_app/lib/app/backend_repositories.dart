@@ -37,12 +37,16 @@ class BackendRepositories
       pickupAddress: d['pickup']?['address'] ?? '',
       customer: d['recipient']?['name'] ?? 'Điểm giao hàng',
       dropoffAddress: d['dropoff']?['address'] ?? '',
+      pickupLatitude: (d['pickup']?['latitude'] as num?)?.toDouble(),
+      pickupLongitude: (d['pickup']?['longitude'] as num?)?.toDouble(),
+      dropoffLatitude: (d['dropoff']?['latitude'] as num?)?.toDouble(),
+      dropoffLongitude: (d['dropoff']?['longitude'] as num?)?.toDouble(),
       item: (d['items'] as List? ?? [])
           .map((i) => '${i['quantity']} × ${i['name']}')
           .join(', '),
       distance: deliveryDistanceKm(d['pickup'], d['dropoff']) ?? 0,
       hasDistance: deliveryDistanceKm(d['pickup'], d['dropoff']) != null,
-      fee: 0,
+      fee: ((deliveryDistanceKm(d['pickup'], d['dropoff']) ?? 0) * 10000).round(),
       total: (d['payment']?['amountToCollect'] as num? ?? 0).round(),
       stage: stages[d['status']] ?? DeliveryStage.accepted,
     );
@@ -139,24 +143,91 @@ class BackendRepositories
   }
 
   @override
+
   Future<DeliveryOrder> advance(String id) async {
-    if (!await store.sendLocation())
+
+    final ok = await store.sendLocation();
+
+    if (!ok && store.position == null) {
+
       throw StateError(store.gpsError ?? 'Chưa có GPS hợp lệ.');
+
+    }
+
     final d = _orders[id]!;
+
     final action = {
+
       'ASSIGNED': 'arrive-at-pickup',
+
       'AT_PICKUP': 'confirm-pickup',
+
       'PICKED_UP': 'arrive-at-dropoff',
+
       'AT_DROPOFF': 'confirm-delivery',
+
     }[d['status']];
+
     if (action == null)
+
       throw StateError('Trạng thái chuyến đã thay đổi. Hãy làm mới.');
+
+
+
+    final isPickupTarget = d['status'] == 'ASSIGNED' || d['status'] == 'AT_PICKUP';
+
+    final target = isPickupTarget ? d['pickup'] : d['dropoff'];
+
+    final routeMeters = store.routeDistanceMeters;
+
+    if (routeMeters != null) {
+
+      if (routeMeters > 200) {
+
+        throw StateError(
+
+          'Bạn còn cách điểm đến ${routeMeters.round()} m (đường xe máy). Vui lòng di chuyển đến gần hơn (<= 200 m).',
+
+        );
+
+      }
+
+    } else if (store.position != null && target != null) {
+
+      final straightKm = deliveryDistanceKm(target, {
+
+        'latitude': store.position!.latitude,
+
+        'longitude': store.position!.longitude,
+
+      });
+
+      if (straightKm != null && straightKm * 1000 > 200) {
+
+        throw StateError(
+
+          'Bạn còn cách điểm đến ${(straightKm * 1000).round()} m. Vui lòng di chuyển đến gần hơn (<= 200 m).',
+
+        );
+
+      }
+
+    }
+
+
+
     final result = Map<String, dynamic>.from(
+
       await store.api.request('POST', '/drivers/me/deliveries/$id/$action'),
+
     );
+
     store.delivery = result['status'] == 'DELIVERED' ? null : result;
+
     return mapOrder(result);
+
   }
+
 
   @override
   Future<DeliveryOrder> reject(String id, String reason) async =>

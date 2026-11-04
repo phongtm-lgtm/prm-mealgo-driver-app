@@ -116,7 +116,9 @@ public class DeliveryService {
                 d.setStatus(DeliveryStatus.DELIVERED); d.setDeliveredAt(Instant.now()); o.setStatus(OrderStatus.DELIVERED);
                 var a = assignments.findById(d.getAssignmentId()).orElseThrow();
                 a.setStatus(AssignmentStatus.COMPLETED);
-                accounts.completed(driver,d.getId(),d.getDeliveredAt());
+                double km = proximity.routingDistanceMeters(o.getPickupLatitude(), o.getPickupLongitude(), o.getDropoffLatitude(), o.getDropoffLongitude()) / 1000.0;
+                long feeVnd = Math.round(km * 10000.0);
+                accounts.completed(driver, d.getId(), d.getDeliveredAt(), java.math.BigDecimal.valueOf(feeVnd));
             }
             default -> throw ApiException.notFound("Unknown delivery action");
         }

@@ -23,12 +23,20 @@ class DriverStore extends ChangeNotifier {
   int historyPage = 0;
   String? error, gpsError;
   Position? position;
+  double? routeDistanceMeters;
+  void updateRouteDistance(double? meters) {
+    if (routeDistanceMeters != meters) {
+      routeDistanceMeters = meters;
+      changed();
+    }
+  }
   DateTime? lastSync;
   Timer? _poll, _gps;
   String? _session;
   String? _refreshToken;
   int _sequence = 0, _generation = 0;
   bool _sendingGps = false, _disposed = false;
+  Completer<bool>? _gpsCompleter;
 
   DriverStore({ApiClient? api, FlutterSecureStorage? storage})
     : api = api ?? ApiClient(),
@@ -243,9 +251,16 @@ class DriverStore extends ChangeNotifier {
   });
 
   Future<bool> sendLocation() async {
-    if (_sendingGps || !authenticated || profile == null) return false;
+    if (!authenticated || profile == null) return false;
+    if (_sendingGps) {
+      if (_gpsCompleter != null) return await _gpsCompleter!.future;
+      return position != null;
+    }
     _sendingGps = true;
+    final completer = Completer<bool>();
+    _gpsCompleter = completer;
     final generation = _generation;
+    bool success = false;
     try {
       if (!await Geolocator.isLocationServiceEnabled())
         throw Exception('Vui lòng bật dịch vụ vị trí trên thiết bị.');
@@ -280,6 +295,7 @@ class DriverStore extends ChangeNotifier {
       });
       position = sample;
       gpsError = null;
+      success = true;
       return true;
     } on ApiException catch (e) {
       if (generation == _generation) {
@@ -296,6 +312,10 @@ class DriverStore extends ChangeNotifier {
       return false;
     } finally {
       _sendingGps = false;
+      _gpsCompleter = null;
+      if (!completer.isCompleted) {
+        completer.complete(success);
+      }
       changed();
     }
   }
