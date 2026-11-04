@@ -15,6 +15,16 @@ server:
   port: 8080
   error:
     include-message: never
+springdoc:
+  api-docs:
+    version: OPENAPI_3_1
+  use-fqn: true
+  override-with-generic-response: false
+  paths-to-match: /api/v1/**
+  swagger-ui:
+    persist-authorization: false
+    tags-sorter: alpha
+    operations-sorter: alpha
 management:
   endpoints:
     web:

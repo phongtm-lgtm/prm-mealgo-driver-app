@@ -53,7 +53,8 @@ public class SecurityConfig {
         return http.cors(c -> {}).csrf(c -> c.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a.dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ASYNC).permitAll()
-                        .requestMatchers("/api/v1/auth/**", "/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/api/v1/auth/**", "/actuator/health", "/actuator/health/**",
+                                "/v3/api-docs", "/v3/api-docs.yaml", "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(converter))).build();
     }
