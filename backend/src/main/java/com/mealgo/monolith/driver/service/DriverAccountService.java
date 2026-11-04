@@ -68,13 +68,17 @@ public class DriverAccountService {
 
     /** Caller holds driver lock. This joins delivery completion's transaction. */
     @Transactional public void completed(Driver driver,UUID deliveryId,Instant deliveredAt) {
+        completed(driver, deliveryId, deliveredAt, null);
+    }
+    @Transactional public void completed(Driver driver,UUID deliveryId,Instant deliveredAt, BigDecimal fee) {
         if(earnings.existsByDeliveryId(deliveryId)) return;
-        if(rate.signum()<0) throw new IllegalStateException("Driver earning rate must not be negative");
-        var e=new DriverEarning(); e.setDriverId(driver.getId()); e.setDeliveryId(deliveryId); e.setAmount(rate);
-        e.setRateConfigured(rate.signum()>0); e.setBalanceAfter(earnings.balance(driver.getId()).add(rate)); e.setCreatedAt(deliveredAt); earnings.save(e);
+        var earn = rate.signum() > 0 ? rate : (fee != null && fee.signum() > 0 ? fee : rate);
+        if(earn.signum()<0) throw new IllegalStateException("Driver earning rate must not be negative");
+        var e=new DriverEarning(); e.setDriverId(driver.getId()); e.setDeliveryId(deliveryId); e.setAmount(earn);
+        e.setRateConfigured(earn.signum()>0); e.setBalanceAfter(earnings.balance(driver.getId()).add(earn)); e.setCreatedAt(deliveredAt); earnings.save(e);
         if(!Boolean.FALSE.equals(driver.getInAppNotificationsEnabled())) {
             var n=new DriverNotification(); n.setDriverId(driver.getId()); n.setReferenceId(deliveryId); n.setType("DELIVERY_COMPLETED");
-            n.setTitle("Giao hàng thành công"); n.setMessage(rate.signum()>0?"Tiền công đã được ghi nhận: "+rate.toPlainString()+" VND":"Đã hoàn tất giao hàng. Tiền công chưa được cấu hình."); notifications.save(n);
+            n.setTitle("Giao hàng thành công"); n.setMessage(earn.signum()>0?"Tiền công đã được ghi nhận: "+earn.toPlainString()+" VND":"Đã hoàn tất giao hàng. Tiền công chưa được cấu hình."); notifications.save(n);
         }
     }
 }

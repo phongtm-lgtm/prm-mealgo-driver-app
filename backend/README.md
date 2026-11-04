@@ -34,10 +34,16 @@ docker compose logs -f backend
 - PostgreSQL: localhost:5433, database `mealgo_db`
 - MinIO API: http://localhost:9000
 - MinIO Console: http://localhost:9001
-- Credentials và cổng: `.env`. Các cổng chỉ bind loopback cho phát triển local.
+- Credentials và cổng: `.env`. Backend bind trên các interface của máy để app trên Android emulator/điện thoại cùng LAN truy cập được; chỉ dùng cấu hình này trong mạng phát triển tin cậy.
 - `minio-init` tạo bucket private `delivery-evidence` và kết thúc thành công (Exited 0 là bình thường).
 - MinIO và mc build từ source upstream với release tag cố định trong `docker/`, vì image upstream không còn pull được tại thời điểm kiểm tra. Lần build đầu cần tải Go dependencies, có thể mất vài phút. MinIO/mc thuộc giấy phép AGPL-3.0 của upstream; cần xem xét nghĩa vụ giấy phép khi phân phối/triển khai.
 - Named volumes lưu database và ảnh. `docker compose down` giữ dữ liệu. Không dùng `down -v` nếu muốn giữ dữ liệu.
+
+### Kết nối app Flutter
+
+- Android emulator: URL mặc định `http://10.0.2.2:8080`.
+- Điện thoại thật cùng Wi-Fi: chạy app với `--dart-define=API_BASE_URL=http://<IP-LAN-của-máy-chạy-backend>:8080`; cho phép cổng 8080 qua Windows Firewall trên mạng Private.
+- Backend phải healthy (`docker compose ps`). Dùng HTTP chỉ trong mạng phát triển; triển khai thật cần HTTPS.
 
 ## Chạy backend bằng IntelliJ
 

@@ -15,6 +15,7 @@ public class DispatchService {
     private final AssignmentRepository assignments;
     private final com.mealgo.monolith.order.service.OrderService orders;
     private final com.mealgo.monolith.driver.service.DriverAccountService accounts;
+    private final ProximityService proximity;
     @Value("${app.delivery.offer-seconds}") private long offerSeconds;
 
     @Transactional public void dispatch() {
@@ -32,7 +33,7 @@ public class DispatchService {
                         || assignments.existsByDeliveryIdAndStatusAndExpiresAtAfter(d.getId(),AssignmentStatus.OFFERED,now)
                         || assignments.existsByDeliveryIdAndDriverId(d.getId(),driver.getId())) continue;
                 var order=orders.get(d.getOrderId()); var settings=accounts.settingsFor(driver);
-                double km=ProximityService.distance(order.getPickupLatitude(),order.getPickupLongitude(),order.getDropoffLatitude(),order.getDropoffLongitude())/1000;
+                double km=proximity.routingDistanceMeters(order.getPickupLatitude(),order.getPickupLongitude(),order.getDropoffLatitude(),order.getDropoffLongitude())/1000;
                 if(km>settings.maxDeliveryDistanceKm() || order.getItems().stream().mapToInt(i->i.getQuantity()).sum()>settings.maxItemQuantity()) continue;
                 // Current COD flow requires no restaurant advance, so zero satisfies every valid advance limit.
                 var a = new Assignment(); a.setDriverId(driver.getId()); a.setDeliveryId(d.getId()); a.setExpiresAt(now.plusSeconds(offerSeconds));

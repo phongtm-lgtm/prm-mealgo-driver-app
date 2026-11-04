@@ -4,3 +4,8 @@ target/
 *.iml
 .vscode/
 *.log
+*.xml
+*.cc
+*.h
+*.cmake
+*.swift

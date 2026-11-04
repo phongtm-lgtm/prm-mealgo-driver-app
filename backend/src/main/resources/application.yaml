@@ -40,3 +40,5 @@ app:
     location-max-age-seconds: 30
     radius-meters: 200
     max-accuracy-meters: 50
+    vietmap-route-key: ${VIETMAP_ROUTE_KEY:}
+    vietmap-routing-url: ${VIETMAP_ROUTING_URL:https://maps.vietmap.vn/api/route}
