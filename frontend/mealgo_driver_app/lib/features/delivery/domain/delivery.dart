@@ -22,6 +22,10 @@ class DeliveryOrder {
     required this.pickupAddress,
     required this.customer,
     required this.dropoffAddress,
+    this.pickupLatitude,
+    this.pickupLongitude,
+    this.dropoffLatitude,
+    this.dropoffLongitude,
     required this.item,
     required this.distance,
     this.hasDistance = true,
@@ -38,6 +42,10 @@ class DeliveryOrder {
   final String pickupAddress;
   final String customer;
   final String dropoffAddress;
+  final double? pickupLatitude;
+  final double? pickupLongitude;
+  final double? dropoffLatitude;
+  final double? dropoffLongitude;
   final String item;
   final double distance;
   final bool hasDistance;
@@ -53,6 +61,10 @@ class DeliveryOrder {
     pickupAddress: pickupAddress,
     customer: customer,
     dropoffAddress: dropoffAddress,
+    pickupLatitude: pickupLatitude,
+    pickupLongitude: pickupLongitude,
+    dropoffLatitude: dropoffLatitude,
+    dropoffLongitude: dropoffLongitude,
     item: item,
     distance: distance,
     hasDistance: hasDistance,

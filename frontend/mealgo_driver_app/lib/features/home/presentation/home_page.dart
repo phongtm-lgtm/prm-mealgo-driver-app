@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../shared/widgets/app_widgets.dart';
 import '../../account/presentation/account_page.dart';
 import '../../delivery/presentation/delivery_panel.dart';
+import '../../delivery/presentation/delivery_map.dart';
 import '../../driver/presentation/settings_page.dart';
 import 'driver_controller.dart';
 import 'face_verification_page.dart';
@@ -137,7 +138,14 @@ class HomePage extends StatelessWidget {
               ),
             Expanded(
               child: LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
+                builder: (context, constraints) {
+                  final displayedOrder = controller.showingActive
+                      ? controller.activeOrder
+                      : (controller.selectedOrder ??
+                          controller.offer ??
+                          controller.activeOrder);
+
+                  return SingleChildScrollView(
                   child: Column(
                     children: [
                       SizedBox(
@@ -148,12 +156,21 @@ class HomePage extends StatelessWidget {
                         child: Stack(
                           children: [
                             Positioned.fill(
-                              child: ColoredBox(
-                                color: const Color(0xFFEEF4F6),
-                                child: const Center(
-                                  child: Text('Chưa hỗ trợ bản đồ trực tiếp'),
-                                ),
-                              ),
+                              child:
+                                  displayedOrder != null &&
+                                      controller.backend != null
+                                  ? DeliveryMap(
+                                      order: displayedOrder,
+                                      store: controller.backend!.store,
+                                    )
+                                  : const ColoredBox(
+                                      color: Color(0xFFEEF4F6),
+                                      child: Center(
+                                        child: Text(
+                                          'Bản đồ chuyến hiện tại sẽ hiển thị tại đây',
+                                        ),
+                                      ),
+                                    ),
                             ),
                             Positioned(
                               top: 12,
@@ -196,10 +213,13 @@ class HomePage extends StatelessWidget {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
-                            const DemoNotice(
-                              text: 'Đơn hàng được đồng bộ từ máy chủ. Bản đồ, ví, thu nhập và đánh giá chưa được hỗ trợ.',
-                            ),
-                            const SizedBox(height: 12),
+                            if (controller.backend == null) ...[
+                              const DemoNotice(
+                                text:
+                                    'Đơn hàng demo. Bản đồ, ví, thu nhập và đánh giá chưa được kết nối máy chủ.',
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                             if (controller.offer != null) ...[
                               SectionCard(
                                 title:
@@ -374,7 +394,8 @@ class HomePage extends StatelessWidget {
                       ),
                     ],
                   ),
-                ),
+                  );
+                },
               ),
             ),
           ],

@@ -14,7 +14,9 @@ class ApiException implements Exception {
 class ApiClient {
   static const baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:8080',
+    // Android emulator reaches the host machine through 10.0.2.2.
+    // Override with --dart-define=API_BASE_URL=... for physical devices.
+    defaultValue: 'http://10.0.2.2:8080',
   );
   final http.Client client;
   String? token;

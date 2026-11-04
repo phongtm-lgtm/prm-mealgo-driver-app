@@ -39,25 +39,93 @@ class DeliveryPanel extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Text(
-                  controller.backend != null
-                      ? '${formatDeliveryDistance(order.distance, available: order.hasDistance)}${order.hasDistance ? '\nĐường chim bay' : ''}'
-                      : '${order.distance} km',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
+                Expanded(
+                  child: ListenableBuilder(
+                    listenable: controller.backend?.store ?? controller,
+                    builder: (context, _) {
+                      final routeMeters =
+                          controller.backend?.store.routeDistanceMeters;
+                      final String distanceText;
+                      final String subText;
+
+                      if (preview) {
+                        distanceText = formatDeliveryDistance(
+                          order.distance,
+                          available: order.hasDistance,
+                        );
+                        subText = 'Quán ➔ Khách';
+                      } else {
+                        if (order.stage.index <
+                            DeliveryStage.pickedUp.index) {
+                          distanceText = routeMeters != null
+                              ? (routeMeters < 1000
+                                  ? '${routeMeters.round()} m'
+                                  : '${(routeMeters / 1000).toStringAsFixed(2)} km')
+                              : formatDeliveryDistance(
+                                  order.distance,
+                                  available: order.hasDistance,
+                                );
+                          subText = 'Đến quán lấy hàng';
+                        } else {
+                          distanceText = routeMeters != null
+                              ? (routeMeters < 1000
+                                  ? '${routeMeters.round()} m'
+                                  : '${(routeMeters / 1000).toStringAsFixed(2)} km')
+                              : formatDeliveryDistance(
+                                  order.distance,
+                                  available: order.hasDistance,
+                                );
+                          subText = 'Đến điểm giao khách';
+                        }
+                      }
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            distanceText,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            subText,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
-                const Spacer(),
-                Text(
-                  controller.backend != null
-                      ? 'Phí: chưa có dữ liệu'
-                      : '+${money(order.fee)}',
-                  style: const TextStyle(
-                    color: Color(0xFFA3E97C),
-                    fontSize: 21,
-                    fontWeight: FontWeight.w800,
-                  ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '+${money(order.fee > 0 ? order.fee : (order.distance * 10000).round())}',
+                      style: const TextStyle(
+                        color: Color(0xFFA3E97C),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      '10.000 đ/km',
+                      style: TextStyle(
+                        color: Color(0xFFA3E97C),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
