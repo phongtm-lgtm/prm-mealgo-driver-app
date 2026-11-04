@@ -67,6 +67,7 @@ class DriverOnboardingTest {
         String phone="0934567890",password="Password123!";
         var challenge=request("POST","/api/v1/auth/register/start",Map.of("phoneNumber",phone,"password",password),null,200);
         String id=challenge.get("registrationId").asText(),otp=challenge.get("devOtp").asText();
+        assertEquals("12345",otp);
         request("POST","/api/v1/auth/login",Map.of("phoneNumber",phone,"password",password),null,401);
         request("POST","/api/v1/auth/register/resend",Map.of("registrationId",id),null,409);
         request("POST","/api/v1/auth/register/verify",Map.of("registrationId",id,"otp","invalid"),null,400);

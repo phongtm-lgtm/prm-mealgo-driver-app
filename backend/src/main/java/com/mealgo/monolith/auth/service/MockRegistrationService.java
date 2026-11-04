@@ -5,7 +5,6 @@ import com.mealgo.monolith.auth.entity.*;
 import com.mealgo.monolith.auth.repository.UserAccountRepository;
 import com.mealgo.monolith.common.exception.ApiException;
 import jakarta.validation.constraints.*;
-import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,7 +24,6 @@ public class MockRegistrationService {
     }
     private final Map<UUID,Pending> pending=new ConcurrentHashMap<>();
     private final Map<String,Instant> lastSent=new ConcurrentHashMap<>();
-    private final SecureRandom random=new SecureRandom();
     private final UserAccountRepository users;
     private final PasswordEncoder passwords;
     private final AuthService auth;
@@ -51,7 +49,7 @@ public class MockRegistrationService {
         var id=UUID.randomUUID(); pending.put(id,p); return issue(id,p);
     }
     private Challenge issue(UUID id,Pending p) {
-        String otp=String.format("%06d",random.nextInt(1000000)); p.otp=passwords.encode(otp); p.sent=Instant.now(); p.expires=p.sent.plusSeconds(300); p.attempts=0;
+        String otp="12345"; p.otp=passwords.encode(otp); p.sent=Instant.now(); p.expires=p.sent.plusSeconds(300); p.attempts=0;
         lastSent.put(p.phone,p.sent);
         return new Challenge(id,"MOCK_DEVELOPMENT_ONLY",otp,p.expires,p.sent.plusSeconds(60));
     }

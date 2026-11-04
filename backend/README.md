@@ -110,7 +110,7 @@ Flutter: Đăng nhập → Đăng ký làm đối tác tài xế → OTP → h�
 
 - `POST /api/v1/auth/register/start`: `{ "phoneNumber": "0934567890", "password": "Password123!" }`.
 - Response chứa `registrationId`, `mode=MOCK_DEVELOPMENT_ONLY`, `devOtp`, `expiresAt`, `resendAt`. Không gửi SMS thật. Phiên OTP lưu trong RAM, mất khi backend restart; triển khai này chỉ dành cho một instance phát triển.
-- `POST /api/v1/auth/register/verify`: `{ "registrationId": "UUID", "otp": "6 số" }`; thành công trả JWT DRIVER. Chỉ tạo tài khoản sau OTP hợp lệ.
+- `POST /api/v1/auth/register/verify`: `{ "registrationId": "UUID", "otp": "12345" }`; OTP giả lập cố định 5 số cho cả gửi đầu và gửi lại, chỉ dành cho phát triển. Thành công trả JWT DRIVER. Chỉ tạo tài khoản sau OTP hợp lệ.
 - `POST /api/v1/auth/register/resend`: `{ "registrationId": "UUID" }`. Mỗi mã sống 5 phút, chờ 60 giây gửi lại, tối đa 5 lần nhập sai. OTP/mật khẩu lưu dạng hash trong phiên. Chưa tích hợp SMS/rate limit phân tán cho production.
 - Public `/auth/register` chỉ tạo CUSTOMER; không tạo DRIVER/MERCHANT/ADMIN để tránh bỏ qua OTP.
 - Mock OTP: local bật mặc định, Docker Compose phát triển bật qua `APP_OTP_MOCK_ENABLED` (đặt false khi không cần). Mặc định ứng dụng tắt; từ chối mock nếu có profile prod/production.

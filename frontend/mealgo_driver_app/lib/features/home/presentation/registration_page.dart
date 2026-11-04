@@ -165,10 +165,10 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 TextFormField(
                   controller: otp,
                   keyboardType: TextInputType.number,
-                  maxLength: 6,
+                  maxLength: 5,
                   decoration: const InputDecoration(labelText: 'Mã OTP'),
                   validator: (v) =>
-                      RegExp(r'^\d{6}$').hasMatch(v!) ? null : 'Nhập mã 6 số',
+                      RegExp(r'^\d{5}$').hasMatch(v!) ? null : 'Nhập mã 5 số',
                 ),
                 TextButton(
                   onPressed: busy || remaining > 0
