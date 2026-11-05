@@ -1,0 +1,548 @@
+{
+  "info": {
+    "name": "MealGo — Luồng Đặt đơn → Quán nhận → Driver lấy hàng & Báo cáo KH",
+    "description": "Bộ Postman Collection chạy tuần tự từ A đến Z:\n1. Đăng nhập 3 bên (Khách hàng, Quán ăn, Tài xế)\n2. Khách đặt đơn COD\n3. Quán nhận đơn (PREPARING) và nấu xong (READY)\n4. Driver bật online, nhận chuyến, đến quán, lấy hàng\n5. Báo cáo sự cố Khách hàng không nghe máy (CUSTOMER_UNREACHABLE)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "customerPhone", "value": "0900000003" },
+    { "key": "merchantPhone", "value": "0900000002" },
+    { "key": "driverPhone", "value": "0900000001" },
+    { "key": "password", "value": "Mealgo123!" },
+    { "key": "customerToken", "value": "" },
+    { "key": "merchantToken", "value": "" },
+    { "key": "driverToken", "value": "" },
+    { "key": "restaurantId", "value": "" },
+    { "key": "menuItemId", "value": "" },
+    { "key": "orderId", "value": "" },
+    { "key": "deliveryId", "value": "" },
+    { "key": "assignmentId", "value": "" },
+    { "key": "reportId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 — Đăng nhập 3 bên (Tự lưu Token)",
+      "item": [
+        {
+          "name": "1.1 Đăng nhập Customer",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{customerPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Customer Login OK', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.collectionVariables.set('customerToken', data.accessToken);",
+                  "  if (pm.environment) pm.environment.set('customerToken', data.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Đăng nhập Merchant (Quán ăn)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{merchantPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Merchant Login OK', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.collectionVariables.set('merchantToken', data.accessToken);",
+                  "  if (pm.environment) pm.environment.set('merchantToken', data.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Đăng nhập Driver (Tài xế)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{driverPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Driver Login OK', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.collectionVariables.set('driverToken', data.accessToken);",
+                  "  if (pm.environment) pm.environment.set('driverToken', data.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 — Khách hàng đặt món (Customer Flow)",
+      "item": [
+        {
+          "name": "2.1 Lấy Menu & Tự lưu ID Quán, ID Món",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/customers/menu?restaurantName=MealGo%20Demo%20Restaurant",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Lấy thông tin quán và món thành công', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const shops = pm.response.json();",
+                  "  const shop = shops.find(s => s.restaurantName === 'MealGo Demo Restaurant') || shops[0];",
+                  "  pm.expect(shop).to.exist;",
+                  "  pm.collectionVariables.set('restaurantId', shop.restaurantId);",
+                  "  const dish = shop.items.find(i => i.available) || shop.items[0];",
+                  "  pm.collectionVariables.set('menuItemId', dish.menuItemId);",
+                  "  if (pm.environment) {",
+                  "    pm.environment.set('restaurantId', shop.restaurantId);",
+                  "    pm.environment.set('menuItemId', dish.menuItemId);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.2 Khách đặt đơn COD (Tự lưu orderId)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/customers/me/orders",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}", "type": "string" }]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"items\": [\n    {\n      \"menuItemId\": \"{{menuItemId}}\",\n      \"quantity\": 1,\n      \"note\": \"Giao nhanh giùm em\"\n    }\n  ],\n  \"recipient\": {\n    \"name\": \"Khách Test Báo Cáo\",\n    \"phone\": \"{{customerPhone}}\"\n  },\n  \"dropoff\": {\n    \"address\": \"Điểm giao gần quán\",\n    \"latitude\": 21.038414,\n    \"longitude\": 105.547018\n  },\n  \"deliveryNote\": \"Khách bận họp gọi trước khi tới\",\n  \"paymentMethod\": \"COD\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Đặt đơn thành công (201 Created)', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const order = pm.response.json();",
+                  "  pm.expect(order.orderId).to.be.a('string');",
+                  "  pm.collectionVariables.set('orderId', order.orderId);",
+                  "  if (pm.environment) pm.environment.set('orderId', order.orderId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 — Nhà hàng tiếp nhận đơn (Merchant Flow)",
+      "item": [
+        {
+          "name": "3.1 Quán chấp nhận đơn (Sang PREPARING)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId}}/accept",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{merchantToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estimatedPreparationMinutes\": 10\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Quán nhận đơn thành công (PREPARING)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('PREPARING');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 — Tài xế nhận cuốc & Đến quán (Driver Flow)",
+      "item": [
+        {
+          "name": "4.1 Tài xế Bật Online & Cập nhật GPS tại quán",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/drivers/me/online-status",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"online\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Tài xế đã Online', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.2 Cập nhật vị trí GPS tài xế tại quán",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/drivers/me/location",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 21.038214,\n  \"longitude\": 105.547018\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Cập nhật GPS thành công', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.3 Đọc Offer và lưu assignmentId + deliveryId",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/drivers/me/offers",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Có lời mời cuốc xe cho tài xế', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const offers = pm.response.json();",
+                  "  pm.expect(offers.length, 'Cần có ít nhất 1 offer').to.be.above(0);",
+                  "  const curOrder = pm.variables.get('orderId');",
+                  "  const match = offers.find(o => o.orderId === curOrder) || offers[0];",
+                  "  pm.collectionVariables.set('assignmentId', match.assignmentId);",
+                  "  pm.collectionVariables.set('deliveryId', match.deliveryId);",
+                  "  if (pm.environment) {",
+                  "    pm.environment.set('assignmentId', match.assignmentId);",
+                  "    pm.environment.set('deliveryId', match.deliveryId);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.4 Tài xế Nhận cuốc (Accept Offer)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/offers/{{assignmentId}}/accept",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Tài xế đã nhận đơn (ASSIGNED)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.5 Tài xế Báo đã đến quán (Arrive at Pickup)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/deliveries/{{deliveryId}}/arrive-at-pickup",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Đã đến quán (AT_PICKUP)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('AT_PICKUP');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 — Quán xong món & Tài xế lấy hàng đến điểm giao",
+      "item": [
+        {
+          "name": "5.1 Quán báo Món đã nấu xong (READY)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId}}/ready",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{merchantToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Đơn hàng đã READY', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('READY');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.2 Tài xế Xác nhận lấy hàng (Confirm Pickup)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/deliveries/{{deliveryId}}/confirm-pickup",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Tài xế đã lấy hàng (PICKED_UP)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('PICKED_UP');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.3 Tài xế Cập nhật GPS tại Điểm Giao Hàng",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/drivers/me/location",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"latitude\": 21.038414,\n  \"longitude\": 105.547018\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Đã cập nhật GPS tới điểm giao', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.4 Tài xế Báo đã đến điểm giao (Arrive at Dropoff)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/deliveries/{{deliveryId}}/arrive-at-dropoff",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Đã đến điểm giao (AT_DROPOFF)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('AT_DROPOFF');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 — TEST BÁO CÁO KHÁCH HÀNG (Chọn 1 trong 2 trường hợp)",
+      "description": "Trường hợp 1: Đã đến điểm giao (AT_DROPOFF) nhưng gọi khách không nghe máy -> Giao thất bại.\nTrường hợp 2: Khi quán đang chuẩn bị (PREPARING) gọi khách không được -> Trả chuyến cho tài xế khác.",
+      "item": [
+        {
+          "name": "★ TH1: Báo giao thất bại tại điểm giao (Khách không nghe máy)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/deliveries/{{deliveryId}}/failure-report",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "assignmentId", "value": "{{assignmentId}}", "type": "text" },
+                { "key": "requestId", "value": "{{$guid}}", "type": "text" },
+                { "key": "reason", "value": "CUSTOMER_UNREACHABLE", "type": "text" },
+                { "key": "note", "value": "Đã gọi khách 3 cuộc nhưng không nghe máy tại điểm giao", "type": "text" },
+                { "key": "image", "type": "file", "src": null, "description": "Chọn file ảnh nhật ký cuộc gọi (tùy chọn)" }
+              ]
+            },
+            "description": "Chạy sau khi đã hoàn thành bước 5.4 (Đang ở trạng thái AT_DROPOFF). Đơn và Chuyến sẽ chuyển sang FAILED."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Báo cáo giao thất bại thành công (FAILED)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('FAILED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "★ TH2: Báo sự cố trước khi lấy hàng (Incident Report — Đơn PREPARING)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/deliveries/{{deliveryId}}/incident",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "assignmentId", "value": "{{assignmentId}}", "type": "text" },
+                { "key": "requestId", "value": "{{$guid}}", "type": "text" },
+                { "key": "reason", "value": "CUSTOMER_UNREACHABLE", "type": "text" },
+                { "key": "note", "value": "Gọi khách xác nhận địa chỉ khi quán đang làm món nhưng không bắt máy", "type": "text" },
+                { "key": "image", "type": "file", "src": null, "description": "Chọn file ảnh chụp cuộc gọi (bắt buộc với CUSTOMER_UNREACHABLE)" }
+              ]
+            },
+            "description": "Dùng khi đơn còn ở bước 4 (chưa bấm lấy hàng 5.2, đơn quán đang PREPARING). Chuyến xe được gỡ khỏi tài xế và tìm tài xế khác."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Trả chuyến thành công (PENDING_REASSIGNMENT)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().outcome).to.equal('PENDING_REASSIGNMENT');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

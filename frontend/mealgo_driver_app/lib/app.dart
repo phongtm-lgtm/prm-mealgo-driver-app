@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import 'app/app_dependencies.dart';
+import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
+import 'features/account/presentation/account_page.dart';
 import 'features/home/presentation/driver_controller.dart';
 import 'features/home/presentation/home_page.dart';
 import 'features/home/presentation/login_page.dart';
@@ -25,11 +27,36 @@ class _MealGoDriverAppState extends State<MealGoDriverApp> {
   @override
   void initState() {
     super.initState();
+    NotificationService.instance.init(
+      onSelectNotification: _handleNotificationPayload,
+    );
     if (widget.dependencies != null) {
       _controller = DriverController(widget.dependencies!)..initialize();
     } else {
       _store.addListener(_sessionChanged);
       _store.init();
+    }
+  }
+
+  void _handleNotificationPayload(String? payload) {
+    if (payload == null || !mounted) return;
+    final nav = _navigatorKey.currentState;
+    if (nav == null) return;
+
+    if (payload.startsWith('offer:') || payload.startsWith('cancellation:')) {
+      nav.popUntil((route) => route.isFirst);
+    } else if (payload.startsWith('backend_notification:') ||
+        payload.startsWith('delivery_completed:')) {
+      if (_controller != null) {
+        nav.push(
+          MaterialPageRoute(
+            builder: (_) => AccountPage(
+              controller: _controller!,
+              section: AccountSection.notifications,
+            ),
+          ),
+        );
+      }
     }
   }
 

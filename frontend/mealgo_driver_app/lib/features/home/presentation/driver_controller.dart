@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../../app/app_dependencies.dart';
 import '../../../app/backend_repositories.dart';
+import '../../../core/formatters.dart';
+import '../../../core/services/notification_service.dart';
 import '../../../driver_event_stream.dart';
 import '../../../api_client.dart';
 import '../../account/domain/account_repository.dart';
@@ -67,6 +69,10 @@ class DriverController extends ChangeNotifier {
     _cancellationMessage = null;
     return message;
   }
+  Set<String> _knownOfferIds = {};
+  final Set<String> _seenNotificationIds = {};
+  bool _initialNotificationsLoaded = false;
+  String? _lastTrackedOrderStatus;
   bool get canRefreshFreePick =>
       online && !showingActive && activeOrder == null && offer == null;
   BackendRepositories? get backend =>
@@ -119,7 +125,11 @@ class DriverController extends ChangeNotifier {
     settings = results[1] as DriverSettings;
     summary = results[2] as AccountSummary;
     _available = results[3] as List<DeliveryOrder>;
+    _knownOfferIds = _available.map((o) => o.id).toSet();
     initialized = true;
+    if (settings.notifications) {
+      unawaited(NotificationService.instance.requestPermissions());
+    }
     if (backend != null) {
       online = backend!.store.profile?['onlineStatus'] == 'ONLINE';
       _trackedDeliveryId = await backend!.store.storage.read(key: _trackingKey);
@@ -129,15 +139,31 @@ class DriverController extends ChangeNotifier {
         ..clear()
         ..addAll(await backend!.history());
       _pollTimer ??= Timer.periodic(
-        const Duration(seconds: 30),
+        const Duration(seconds: 5),
         (_) => _pollBackend(),
       );
+      backend!.store.addListener(_onStoreUpdated);
       _events ??= DriverEventStream(backend!.store.api, () {
         syncFromServer();
       })..connect();
     }
     serverUnavailable = false;
   });
+
+  void _onStoreUpdated() {
+    if (_disposed || backend == null || !settings.notifications) return;
+    for (final raw in backend!.store.offers) {
+      if (raw is Map) {
+        final id = raw['id']?.toString() ?? raw['deliveryId']?.toString();
+        if (id != null && !_knownOfferIds.contains(id)) {
+          _knownOfferIds.add(id);
+          final mapped =
+              backend!.mapOrder(Map<String, dynamic>.from(raw), offer: true);
+          unawaited(NotificationService.instance.showOfferNotification(mapped));
+        }
+      }
+    }
+  }
 
   String get _trackingKey => 'active_delivery_${profile!.id}';
 
@@ -158,6 +184,24 @@ class DriverController extends ChangeNotifier {
         : null;
     if (_disposed || revision != _revision) return;
     activeOrder = current;
+
+    // 1. Kiểm tra trạng thái nhà hàng làm xong món (orderStatus chuyển sang READY)
+    if (current != null) {
+      final prevStatus = _lastTrackedOrderStatus;
+      final newStatus = current.orderStatus;
+      if (prevStatus != null &&
+          prevStatus != 'READY' &&
+          newStatus == 'READY') {
+        if (settings.notifications) {
+          unawaited(NotificationService.instance.showFoodReadyNotification(current));
+        }
+      }
+      _lastTrackedOrderStatus = newStatus;
+    } else {
+      _lastTrackedOrderStatus = null;
+    }
+
+    // 2. Kiểm tra chuyến kết thúc (Hủy đơn không do tài xế hoặc hoàn thành)
     if (previous != null && previous != current?.id) {
       selectedOrder = null;
       showingActive = current != null;
@@ -171,6 +215,27 @@ class DriverController extends ChangeNotifier {
         _history.removeWhere((o) => o.id == ended!.id);
         _history.insert(0, ended!);
         account?.invalidate();
+        if (settings.notifications) {
+          unawaited(NotificationService.instance.showCancellationNotification(
+            _cancellationMessage!,
+            orderId: ended.id,
+          ));
+        }
+      } else if (ended == null && current == null) {
+        _cancellationMessage = 'Đơn hàng đã được hủy bởi khách hoặc nhà hàng';
+        if (settings.notifications) {
+          unawaited(NotificationService.instance.showCancellationNotification(
+            _cancellationMessage!,
+            orderId: previous,
+          ));
+        }
+      } else if (ended?.stage == DeliveryStage.completed) {
+        if (settings.notifications) {
+          unawaited(NotificationService.instance.showDeliveryCompletedNotification(
+            'Giao hàng thành công! Bạn nhận được ${money(ended!.fee)}.',
+            deliveryId: ended.id,
+          ));
+        }
       }
     }
     await _rememberActive(current?.id);
@@ -193,6 +258,14 @@ class DriverController extends ChangeNotifier {
       if (_disposed || revision != _revision) return;
       await _syncCurrent(current, revision);
       if (_disposed || revision != _revision) return;
+      if (settings.notifications) {
+        for (final newOffer in offers) {
+          if (!_knownOfferIds.contains(newOffer.id)) {
+            unawaited(NotificationService.instance.showOfferNotification(newOffer));
+          }
+        }
+      }
+      _knownOfferIds = offers.map((o) => o.id).toSet();
       _available = offers;
       online = backend!.store.profile?['onlineStatus'] == 'ONLINE';
       if (!_available.any((o) => o.id == selectedOrder?.id))
@@ -200,6 +273,9 @@ class DriverController extends ChangeNotifier {
       if (serverUnavailable) error = null;
       serverUnavailable = false;
       _notify();
+      if (settings.notifications) {
+        unawaited(_checkNewBackendNotifications());
+      }
     } catch (e) {
       if (_disposed || revision != _revision) return;
       if (_isServerFailure(e)) serverUnavailable = true;
@@ -209,6 +285,26 @@ class DriverController extends ChangeNotifier {
       _polling = false;
       if (_refreshPending && !_disposed && !busy) _pollBackend();
     }
+  }
+
+  Future<void> _checkNewBackendNotifications() async {
+    if (backend == null || !settings.notifications || _disposed) return;
+    try {
+      final res = await backend!.accountList('notifications', 0);
+      final items = (res['items'] as List?) ?? [];
+      for (final item in items) {
+        final map = Map<String, dynamic>.from(item as Map);
+        final id = map['id']?.toString();
+        if (id == null) continue;
+        if (!_seenNotificationIds.contains(id)) {
+          _seenNotificationIds.add(id);
+          if (_initialNotificationsLoaded && map['read'] != true) {
+            unawaited(NotificationService.instance.showBackendNotification(map));
+          }
+        }
+      }
+      _initialNotificationsLoaded = true;
+    } catch (_) {}
   }
 
   Future<void> updateLocation() async {
@@ -323,8 +419,14 @@ class DriverController extends ChangeNotifier {
   });
 
   Future<bool> saveSettings(DriverSettings value) => _run(() async {
+    final oldNotifications = settings.notifications;
     settings = await _dependencies.driver.saveSettings(value);
     if (!settings.autoAccept) _clearOffer();
+    if (settings.notifications && !oldNotifications) {
+      unawaited(NotificationService.instance.requestPermissions());
+    } else if (!settings.notifications) {
+      unawaited(NotificationService.instance.cancelAll());
+    }
   });
 
   /// Explicit demo trigger instead of pretending to receive a server event.
@@ -345,6 +447,9 @@ class DriverController extends ChangeNotifier {
     }
     offer = available.first;
     offerSeconds = 15;
+    if (settings.notifications) {
+      unawaited(NotificationService.instance.showOfferNotification(offer!));
+    }
     _offerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       offerSeconds--;
       if (offerSeconds <= 0) {
@@ -386,6 +491,7 @@ class DriverController extends ChangeNotifier {
 
   @override
   void dispose() {
+    backend?.store.removeListener(_onStoreUpdated);
     account?.dispose();
     _pollTimer?.cancel();
     _events?.dispose();

@@ -1,0 +1,644 @@
+{
+  "info": {
+    "name": "MealGo — Driver Reload Free-Pick Offers Test",
+    "description": "Kiểm thử tự động kịch bản Tài xế ấn nút Reload (↻) để tìm đơn mới khi không muốn nhận đơn đang hiển thị.\n\nKịch bản:\n1. Đăng nhập 3 bên (Khách hàng, Nhà hàng, Tài xế) & lấy Menu món ăn.\n2. Chuẩn bị sẵn 3 đơn hàng (Order 1, Order 2, Order 3) ở trạng thái PENDING_ASSIGNMENT.\n3. Driver bật Online và nhận đề xuất đơn đầu tiên (Offer 1).\n4. Driver ấn Reload lần 1: Gửi skippedAssignmentIds = [Offer 1] -> Hệ thống từ chối Offer 1 (REJECTED) và cấp Offer 2.\n5. Driver ấn Reload lần 2: Gửi skippedAssignmentIds = [Offer 2] -> Hệ thống từ chối Offer 2 (REJECTED) và cấp Offer 3.\n6. Driver đồng ý nhận Offer 3 -> Đơn chuyển thành ASSIGNED trong chuyến đi hiện tại.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "customerPhone", "value": "0900000003" },
+    { "key": "merchantPhone", "value": "0900000002" },
+    { "key": "driverPhone", "value": "0900000001" },
+    { "key": "password", "value": "Mealgo123!" },
+    { "key": "customerToken", "value": "" },
+    { "key": "merchantToken", "value": "" },
+    { "key": "driverToken", "value": "" },
+    { "key": "restaurantId", "value": "" },
+    { "key": "menuItemId", "value": "" },
+    { "key": "orderId_1", "value": "" },
+    { "key": "orderId_2", "value": "" },
+    { "key": "orderId_3", "value": "" },
+    { "key": "offer1_assignmentId", "value": "" },
+    { "key": "offer1_orderId", "value": "" },
+    { "key": "offer2_assignmentId", "value": "" },
+    { "key": "offer2_orderId", "value": "" },
+    { "key": "offer3_assignmentId", "value": "" },
+    { "key": "offer3_orderId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 — Khởi tạo & Đăng nhập 3 bên",
+      "item": [
+        {
+          "name": "1.1 Đăng nhập Customer",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{customerPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Customer Login OK (200)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.accessToken).to.be.a('string');",
+                  "  pm.collectionVariables.set('customerToken', data.accessToken);",
+                  "  if (pm.environment) pm.environment.set('customerToken', data.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.2 Đăng nhập Merchant (Quán ăn)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{merchantPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Merchant Login OK (200)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.accessToken).to.be.a('string');",
+                  "  pm.collectionVariables.set('merchantToken', data.accessToken);",
+                  "  if (pm.environment) pm.environment.set('merchantToken', data.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Đăng nhập Driver (Tài xế)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{driverPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Driver Login OK (200)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.accessToken).to.be.a('string');",
+                  "  pm.collectionVariables.set('driverToken', data.accessToken);",
+                  "  if (pm.environment) pm.environment.set('driverToken', data.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.4 Lấy thông tin Menu & Quán ăn",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/customers/menu?restaurantName=MealGo%20Demo%20Restaurant",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Lấy thông tin Quán & Món thành công', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const shops = pm.response.json();",
+                  "  const shop = shops.find(s => s.restaurantName === 'MealGo Demo Restaurant') || shops[0];",
+                  "  pm.expect(shop).to.exist;",
+                  "  pm.collectionVariables.set('restaurantId', shop.restaurantId);",
+                  "  const dish = shop.items.find(i => i.available) || shop.items[0];",
+                  "  pm.collectionVariables.set('menuItemId', dish.menuItemId);",
+                  "  if (pm.environment) {",
+                  "    pm.environment.set('restaurantId', shop.restaurantId);",
+                  "    pm.environment.set('menuItemId', dish.menuItemId);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 — Chuẩn bị sẵn 3 đơn hàng Pending trong hàng chờ",
+      "description": "Tạo 3 đơn hàng từ Khách và để Nhà hàng nhận đơn (PREPARING) để hệ thống đưa vào hàng chờ Delivery PENDING_ASSIGNMENT.",
+      "item": [
+        {
+          "name": "2.1 Khách đặt Đơn #1",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/customers/me/orders",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}", "type": "string" }]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"items\": [\n    {\n      \"menuItemId\": \"{{menuItemId}}\",\n      \"quantity\": 1,\n      \"note\": \"Đơn số 1 - Test reload\"\n    }\n  ],\n  \"recipient\": {\n    \"name\": \"Khách Đơn 1\",\n    \"phone\": \"0901234501\"\n  },\n  \"dropoff\": {\n    \"address\": \"Điểm giao 1 - Gần quán\",\n    \"latitude\": 21.038414,\n    \"longitude\": 105.547018\n  },\n  \"deliveryNote\": \"Giao cổng trước\",\n  \"paymentMethod\": \"COD\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Tạo Đơn #1 thành công (201)', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const order = pm.response.json();",
+                  "  pm.expect(order.orderId).to.be.a('string');",
+                  "  pm.collectionVariables.set('orderId_1', order.orderId);",
+                  "  if (pm.environment) pm.environment.set('orderId_1', order.orderId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.2 Quán nhận Đơn #1",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId_1}}/accept",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{merchantToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estimatedPreparationMinutes\": 10\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Quán nhận Đơn #1 -> PREPARING (200)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('PREPARING');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.3 Khách đặt Đơn #2",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/customers/me/orders",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}", "type": "string" }]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"items\": [\n    {\n      \"menuItemId\": \"{{menuItemId}}\",\n      \"quantity\": 1,\n      \"note\": \"Đơn số 2 - Test reload\"\n    }\n  ],\n  \"recipient\": {\n    \"name\": \"Khách Đơn 2\",\n    \"phone\": \"0901234502\"\n  },\n  \"dropoff\": {\n    \"address\": \"Điểm giao 2 - Gần quán\",\n    \"latitude\": 21.038500,\n    \"longitude\": 105.547100\n  },\n  \"deliveryNote\": \"Gọi trước 5 phút\",\n  \"paymentMethod\": \"COD\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Tạo Đơn #2 thành công (201)', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const order = pm.response.json();",
+                  "  pm.expect(order.orderId).to.be.a('string');",
+                  "  pm.collectionVariables.set('orderId_2', order.orderId);",
+                  "  if (pm.environment) pm.environment.set('orderId_2', order.orderId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.4 Quán nhận Đơn #2",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId_2}}/accept",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{merchantToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estimatedPreparationMinutes\": 10\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Quán nhận Đơn #2 -> PREPARING (200)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('PREPARING');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.5 Khách đặt Đơn #3",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/customers/me/orders",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{customerToken}}", "type": "string" }]
+            },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"restaurantId\": \"{{restaurantId}}\",\n  \"items\": [\n    {\n      \"menuItemId\": \"{{menuItemId}}\",\n      \"quantity\": 1,\n      \"note\": \"Đơn số 3 - Test reload\"\n    }\n  ],\n  \"recipient\": {\n    \"name\": \"Khách Đơn 3\",\n    \"phone\": \"0901234503\"\n  },\n  \"dropoff\": {\n    \"address\": \"Điểm giao 3 - Gần quán\",\n    \"latitude\": 21.038600,\n    \"longitude\": 105.547200\n  },\n  \"deliveryNote\": \"Giao tận phòng\",\n  \"paymentMethod\": \"COD\"\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Tạo Đơn #3 thành công (201)', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const order = pm.response.json();",
+                  "  pm.expect(order.orderId).to.be.a('string');",
+                  "  pm.collectionVariables.set('orderId_3', order.orderId);",
+                  "  if (pm.environment) pm.environment.set('orderId_3', order.orderId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2.6 Quán nhận Đơn #3",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId_3}}/accept",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{merchantToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estimatedPreparationMinutes\": 10\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Quán nhận Đơn #3 -> PREPARING (200)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('PREPARING');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 — Driver Online & Nhận Đơn Đầu Tiên",
+      "description": "Tài xế vào ca (Online) và tải đề xuất chuyến đầu tiên hiển thị trên màn hình Free-Pick.",
+      "item": [
+        {
+          "name": "3.1 Driver Bật Online",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/v1/drivers/me/online-status",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"online\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Driver Online thành công (200)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().online).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 Tải Đề Xuất Đơn Đầu Tiên (Offer #1)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/offers/refresh",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skippedAssignmentIds\": []\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Nhận Đơn đề xuất #1 hiển thị trên màn hình', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const offers = pm.response.json();",
+                  "  pm.expect(offers).to.be.an('array').with.lengthOf(1);",
+                  "  const offer1 = offers[0];",
+                  "  pm.expect(offer1.assignmentId).to.be.a('string');",
+                  "  pm.expect(offer1.status).to.equal('OFFERED');",
+                  "  pm.expect(offer1.canRespond).to.be.true;",
+                  "  pm.collectionVariables.set('offer1_assignmentId', offer1.assignmentId);",
+                  "  pm.collectionVariables.set('offer1_orderId', offer1.orderId);",
+                  "  if (pm.environment) {",
+                  "    pm.environment.set('offer1_assignmentId', offer1.assignmentId);",
+                  "    pm.environment.set('offer1_orderId', offer1.orderId);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 — Driver ấn nút Reload lần 1 (Bỏ qua Đơn #1)",
+      "description": "Tài xế không muốn nhận đơn đang hiển thị (Offer #1) nên bấm nút Reload (↻). App gửi skippedAssignmentIds chứa Offer #1. Backend đánh dấu REJECTED cho Offer #1 và tìm đơn kế tiếp trong hàng chờ.",
+      "item": [
+        {
+          "name": "4.1 Driver ấn Reload ↻ (Bỏ qua Offer #1 để lấy đơn mới)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/offers/refresh",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skippedAssignmentIds\": [\"{{offer1_assignmentId}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Reload lần 1 thành công: Trả về Đơn mới khác Đơn #1', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const offers = pm.response.json();",
+                  "  pm.expect(offers).to.be.an('array').with.lengthOf(1);",
+                  "  const offer2 = offers[0];",
+                  "  const oldAssignmentId = pm.collectionVariables.get('offer1_assignmentId');",
+                  "  const oldOrderId = pm.collectionVariables.get('offer1_orderId');",
+                  "  pm.expect(offer2.assignmentId).to.not.equal(oldAssignmentId, 'AssignmentId mới phải khác AssignmentId cũ vừa bỏ qua');",
+                  "  pm.expect(offer2.orderId).to.not.equal(oldOrderId, 'OrderId mới phải khác OrderId cũ vừa bỏ qua');",
+                  "  pm.expect(offer2.status).to.equal('OFFERED');",
+                  "  pm.collectionVariables.set('offer2_assignmentId', offer2.assignmentId);",
+                  "  pm.collectionVariables.set('offer2_orderId', offer2.orderId);",
+                  "  if (pm.environment) {",
+                  "    pm.environment.set('offer2_assignmentId', offer2.assignmentId);",
+                  "    pm.environment.set('offer2_orderId', offer2.orderId);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4.2 Xác minh Offer #1 đã chuyển sang trạng thái REJECTED",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/drivers/me/offers/{{offer1_assignmentId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Offer #1 đã được hệ thống ghi nhận là REJECTED', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.status).to.equal('REJECTED');",
+                  "  pm.expect(data.canRespond).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 — Driver ấn nút Reload lần 2 (Bỏ qua Đơn #2)",
+      "description": "Tài xế tiếp tục không muốn nhận đơn số 2 và ấn Reload (↻) lần nữa. Backend loại bỏ cả Offer #2 và cung cấp đơn số 3.",
+      "item": [
+        {
+          "name": "5.1 Driver ấn Reload ↻ (Bỏ qua Offer #2 để lấy đơn mới)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/offers/refresh",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skippedAssignmentIds\": [\"{{offer2_assignmentId}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Reload lần 2 thành công: Trả về Đơn mới khác Đơn #1 và Đơn #2', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const offers = pm.response.json();",
+                  "  pm.expect(offers).to.be.an('array').with.lengthOf(1);",
+                  "  const offer3 = offers[0];",
+                  "  const offer1Id = pm.collectionVariables.get('offer1_assignmentId');",
+                  "  const offer2Id = pm.collectionVariables.get('offer2_assignmentId');",
+                  "  pm.expect(offer3.assignmentId).to.not.equal(offer1Id);",
+                  "  pm.expect(offer3.assignmentId).to.not.equal(offer2Id);",
+                  "  pm.expect(offer3.status).to.equal('OFFERED');",
+                  "  pm.collectionVariables.set('offer3_assignmentId', offer3.assignmentId);",
+                  "  pm.collectionVariables.set('offer3_orderId', offer3.orderId);",
+                  "  if (pm.environment) {",
+                  "    pm.environment.set('offer3_assignmentId', offer3.assignmentId);",
+                  "    pm.environment.set('offer3_orderId', offer3.orderId);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5.2 Xác minh Offer #2 đã chuyển sang trạng thái REJECTED",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/drivers/me/offers/{{offer2_assignmentId}}",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Offer #2 đã được hệ thống ghi nhận là REJECTED', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data.status).to.equal('REJECTED');",
+                  "  pm.expect(data.canRespond).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 — Driver chấp nhận Đơn #3 & Xác nhận chuyến hiện tại",
+      "description": "Sau khi reload liên tục đến đơn ưng ý (Đơn #3), Tài xế bấm nhận đơn (Accept) và bắt đầu chuyến giao hàng.",
+      "item": [
+        {
+          "name": "6.1 Driver bấm Nhận Đơn #3 (Accept Offer)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/offers/{{offer3_assignmentId}}/accept",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Nhận chuyến thành công (200 ACCEPTED)', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const res = pm.response.json();",
+                  "  pm.expect(res.status).to.equal('ACCEPTED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6.2 Kiểm tra Chuyến Đi Hiện Tại của Driver",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/drivers/me/deliveries/current",
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{driverToken}}", "type": "string" }]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Chuyến đi hiện tại đúng là Đơn #3 và trạng thái ASSIGNED', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const trip = pm.response.json();",
+                  "  const expectedOrderId = pm.collectionVariables.get('offer3_orderId');",
+                  "  pm.expect(trip.orderId).to.equal(expectedOrderId);",
+                  "  pm.expect(trip.status).to.equal('ASSIGNED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

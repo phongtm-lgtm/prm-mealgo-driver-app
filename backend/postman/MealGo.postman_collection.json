@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "MealGo — Customer & Restaurant → Driver App",
-    "description": "Customer và restaurant thao tác bằng Postman; driver dùng app. Chạy lần lượt folder 01, 02, 03. Sau đó tài xế nhận đơn trên app, chạy request Ready trong folder 04 trước khi tài xế lấy hàng. Folder 05 chỉ dùng khi cần kiểm tra hoặc hủy đơn. Đọc README.md đi kèm. Không Run toàn bộ collection vì có request xóa giỏ/hủy/từ chối đơn tùy chọn.",
+    "description": "Thử Free-Pick với hai khách và bốn món bằng environment MealGo local. Chạy folder 06 để đặt hai đơn COD, rồi folder 07 để quán nhận đơn. Folder 08 có các thao tác hủy và báo sự cố, chỉ gửi từng request. Folder 01–05 là luồng một khách với menuItemId tự chọn. Xem README.md trước khi chạy.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -11,8 +11,8 @@
     {"key":"password","value":"Mealgo123!"},
     {"key":"customerToken","value":""},
     {"key":"merchantToken","value":""},
-    {"key":"restaurantId","value":"76e2a2b2-a293-4a1d-858d-34393c1bd645"},
-    {"key":"menuItemId","value":"eb513600-0422-459b-ba03-d80a00bdb282"},
+    {"key":"restaurantId","value":"5992a34a-2653-42d3-950a-f947ef7835ae"},
+    {"key":"menuItemId","value":"487454a0-79d1-416b-ad75-cc455503270e"},
     {"key":"quantity","value":"1"},
     {"key":"recipientName","value":"Nguyễn Văn A"},
     {"key":"recipientPhone","value":"0901234567"},
@@ -21,7 +21,32 @@
     {"key":"dropoffLongitude","value":"106.6825"},
     {"key":"orderId","value":""},
     {"key":"idempotencyKey","value":""},
-    {"key":"orderBody","value":""}
+    {"key":"orderBody","value":""},
+    {"key":"phone_customer_a","value":"0900000003"},
+    {"key":"phone_customer_b","value":"0900000005"},
+    {"key":"phone_demo_driver","value":"0900000001"},
+    {"key":"token_customer_a","value":""},
+    {"key":"token_customer_b","value":""},
+    {"key":"user_customer_a","value":""},
+    {"key":"user_customer_b","value":""},
+    {"key":"token_demo_merchant","value":""},
+    {"key":"token_demo_driver","value":""},
+    {"key":"demo_customer","value":"a"},
+    {"key":"demo_dishes_a","value":"1,2"},
+    {"key":"demo_dishes_b","value":"3,4"},
+    {"key":"demo_menu","value":""},
+    {"key":"demo_order_body_a","value":""},
+    {"key":"demo_order_key_a","value":""},
+    {"key":"demo_order_id_a","value":""},
+    {"key":"demo_shop_a","value":""},
+    {"key":"demo_order_body_b","value":""},
+    {"key":"demo_order_key_b","value":""},
+    {"key":"demo_order_id_b","value":""},
+    {"key":"demo_shop_b","value":""},
+    {"key":"demo_skip_ids","value":"[]"},
+    {"key":"demo_delivery_id","value":""},
+    {"key":"demo_assignment_id","value":""},
+    {"key":"demo_report_id","value":""}
   ],
   "item": [
     {
@@ -53,7 +78,7 @@
           "request":{"method":"GET","url":"{{baseUrl}}/api/v1/customers/me/cart"}
         },
         {
-          "name":"Thêm món — cộng số lượng nếu đã có",
+          "name":"Thêm món theo menuItemId cố định — luân phiên 4 món ở folder 06",
           "request":{"method":"POST","url":"{{baseUrl}}/api/v1/customers/me/cart/items","header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"menuItemId\":\"{{menuItemId}}\",\"quantity\":{{quantity}},\"note\":\"Không cay\"}","options":{"raw":{"language":"json"}}}},
           "event":[{"listen":"test","script":{"exec":["pm.test('Đã thêm món', () => pm.response.to.have.status(200));"]}}]
         },
@@ -112,6 +137,1106 @@
         {"name":"Restaurant: từ chối đơn PENDING","request":{"method":"POST","url":"{{baseUrl}}/api/v1/merchant/restaurants/{{restaurantId}}/orders/{{orderId}}/reject","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{merchantToken}}","type":"string"}]},"header":[{"key":"Content-Type","value":"application/json"}],"body":{"mode":"raw","raw":"{\"reason\":\"Hết nguyên liệu\"}","options":{"raw":{"language":"json"}}}}},
         {"name":"Customer: xóa một món khỏi giỏ","request":{"method":"DELETE","url":"{{baseUrl}}/api/v1/customers/me/cart/items/{{menuItemId}}","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{customerToken}}","type":"string"}]}}},
         {"name":"Customer: xóa giỏ thủ công / đổi quán","request":{"method":"DELETE","url":"{{baseUrl}}/api/v1/customers/me/cart","auth":{"type":"bearer","bearer":[{"key":"token","value":"{{customerToken}}","type":"string"}]}}}
+      ]
+    },
+    {
+      "name": "06 — Hai customer: 4 món luân phiên và 2 đơn mẫu",
+      "description": "Chọn environment MealGo local trước khi chạy. Thứ tự login A/B, đọc menu, thêm món, chuẩn bị A/B và đặt đơn A/B. Mặc định gửi mẫu A = 1+2, B = 3+4. Đổi demo_dishes_a/b sang cart để đặt đúng giỏ hoặc random để chọn 2 món khác nhau. Folder này tạo hai đơn COD và giữ giỏ.",
+      "item": [
+        {
+          "name": "Đăng nhập Customer A",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{phone_customer_a}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('token_customer_a');",
+                  "pm.collectionVariables.unset('token_customer_a');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Đăng nhập đúng tài khoản Customer A', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const account = pm.response.json();",
+                  "  pm.expect(account.role).to.equal('CUSTOMER');",
+                  "  pm.expect(account.accessToken).to.be.a('string').and.not.empty;",
+                  "  pm.expect(account.userId).to.be.a('string').and.not.empty;",
+                  "  const userB = pm.variables.get('user_customer_b') || pm.environment.get('user_customer_b') || pm.collectionVariables.get('user_customer_b');",
+                  "  if (userB) { pm.expect(account.userId, 'A và B cần hai tài khoản khác nhau').not.to.equal(userB); }",
+                  "  pm.environment.set('user_customer_a', account.userId);",
+                  "  pm.collectionVariables.set('user_customer_a', account.userId);",
+                  "  pm.environment.set('token_customer_a', account.accessToken);",
+                  "  pm.collectionVariables.set('token_customer_a', account.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Đăng nhập Customer B",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{phone_customer_b}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('token_customer_b');",
+                  "pm.collectionVariables.unset('token_customer_b');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Đăng nhập đúng tài khoản Customer B', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const account = pm.response.json();",
+                  "  pm.expect(account.role).to.equal('CUSTOMER');",
+                  "  pm.expect(account.accessToken).to.be.a('string').and.not.empty;",
+                  "  pm.expect(account.userId).to.be.a('string').and.not.empty;",
+                  "  const userA = pm.variables.get('user_customer_a') || pm.environment.get('user_customer_a') || pm.collectionVariables.get('user_customer_a');",
+                  "  if (userA) { pm.expect(account.userId, 'A và B cần hai tài khoản khác nhau').not.to.equal(userA); }",
+                  "  pm.environment.set('user_customer_b', account.userId);",
+                  "  pm.collectionVariables.set('user_customer_b', account.userId);",
+                  "  pm.environment.set('token_customer_b', account.accessToken);",
+                  "  pm.collectionVariables.set('token_customer_b', account.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Đọc ID và giá 4 món từ menu",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/customers/menu?restaurantName=MealGo%20Demo%20Restaurant",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_customer_a}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('demo_menu');",
+                  "pm.collectionVariables.unset('demo_menu');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Quán đang nhận đơn có đủ 4 món', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const choices = [",
+                  "    ['Com ga', 'Cơm ít, kèm dưa leo; sốt gừng để riêng'],",
+                  "    ['Bún bò Huế', 'Ít cay, kèm hành và rau thơm'],",
+                  "    ['Bánh mì thịt', 'Thêm dưa leo và đồ chua, không ớt'],",
+                  "    ['Trà sữa trân châu', '50% đường, ít đá, kèm trân châu đen']",
+                  "  ];",
+                  "  const restaurants = pm.response.json();",
+                  "  const shop = restaurants.find(r => r.restaurantName === 'MealGo Demo Restaurant' &&",
+                  "    choices.every(([name]) => r.items.some(i => i.name === name)));",
+                  "  pm.expect(shop, 'Bật seed demo và kiểm tra quán còn bán đủ món').to.exist;",
+                  "  const dishes = choices.map(([name, note]) => {",
+                  "    const item = shop.items.find(i => i.name === name);",
+                  "    pm.expect(item.menuItemId).to.be.a('string').and.not.empty;",
+                  "    pm.expect(Number(item.price)).to.be.above(0);",
+                  "    return {menuItemId: item.menuItemId, name, price: Number(item.price), note};",
+                  "  });",
+                  "  const menuData = JSON.stringify({",
+                  "    restaurantId: shop.restaurantId, latitude: shop.latitude, longitude: shop.longitude, dishes",
+                  "  });",
+                  "  pm.environment.set('demo_menu', menuData);",
+                  "  pm.collectionVariables.set('demo_menu', menuData);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Thêm món kế tiếp — mỗi lần Send đổi món",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/customers/me/cart/items",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{demo_cart_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"menuItemId\": \"{{demo_next_item}}\",\n  \"quantity\": 1,\n  \"note\": {{demo_next_note}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Chọn demo_customer = a hoặc b. A bắt đầu ở món 1, B ở món 3. Mỗi khách có bộ đếm riêng, tăng sau phản hồi thành công rồi quay vòng sau món 4. POST cộng dồn số lượng trong giỏ."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const getVar = (k) => pm.variables.get(k) || pm.environment.get(k) || pm.collectionVariables.get(k);",
+                  "const slot = getVar('demo_customer') || 'a';",
+                  "const savedMenu = getVar('demo_menu');",
+                  "const token = getVar('token_customer_' + slot);",
+                  "if (!['a', 'b'].includes(slot) || !savedMenu || !token) {",
+                  "  pm.execution.skipRequest();",
+                  "  throw new Error('Đăng nhập Customer A/B, đọc menu và đặt demo_customer = a hoặc b.');",
+                  "}",
+                  "const dishes = JSON.parse(savedMenu).dishes;",
+                  "const cursor = Number(getVar('demo_cursor_' + slot) ?? (slot === 'a' ? 0 : 2));",
+                  "const index = Number.isInteger(cursor) && cursor >= 0 ? cursor % dishes.length : 0;",
+                  "pm.variables.set('demo_cart_token', token);",
+                  "pm.variables.set('demo_next_item', dishes[index].menuItemId);",
+                  "pm.variables.set('demo_next_note', JSON.stringify(dishes[index].note));",
+                  "pm.variables.set('demo_next_cursor', (index + 1) % dishes.length);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Đã thêm đúng món vào giỏ của khách đang chọn', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const row = pm.response.json().items.find(i => i.menuItemId === pm.variables.get('demo_next_item'));",
+                  "  pm.expect(row).to.exist;",
+                  "  pm.expect(row.quantity).to.be.above(0);",
+                  "  pm.expect(row.note).to.equal(JSON.parse(pm.variables.get('demo_next_note')));",
+                  "  const getVar = (k) => pm.variables.get(k) || pm.environment.get(k) || pm.collectionVariables.get(k);",
+                  "  const currentSlot = getVar('demo_customer') || 'a';",
+                  "  const nextCursor = pm.variables.get('demo_next_cursor');",
+                  "  pm.environment.set('demo_cursor_' + currentSlot, nextCursor);",
+                  "  pm.collectionVariables.set('demo_cursor_' + currentSlot, nextCursor);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Chuẩn bị từng đơn MỚI",
+          "description": "Mỗi request tạo một snapshot body và Idempotency-Key cho một đơn mới. Sau khi timeout lúc đặt, gửi lại request Đặt đơn với snapshot cũ.",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Chuẩn bị giỏ hoặc mẫu đã chọn với một khóa cho lần đặt này', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const getVar = (k) => pm.variables.get(k) || pm.environment.get(k) || pm.collectionVariables.get(k);",
+                  "  const slot = pm.variables.get('demo_slot') || 'a';",
+                  "  const savedMenu = getVar('demo_menu');",
+                  "  pm.expect(savedMenu, 'Chạy request Đọc ID và giá 4 món').to.be.a('string').and.not.empty;",
+                  "  const menu = JSON.parse(savedMenu);",
+                  "  const plan = (getVar('demo_dishes_' + slot) || (slot === 'a' ? '1,2' : '3,4')).replace(/\\s/g, '').toLowerCase();",
+                  "  let items;",
+                  "  if (plan === 'cart') {",
+                  "    const cart = pm.response.json();",
+                  "    pm.expect(cart.restaurantId, 'Giỏ của khách phải thuộc quán demo').to.equal(menu.restaurantId);",
+                  "    pm.expect(cart.items.length, 'Giỏ đang rỗng').to.be.above(0);",
+                  "    pm.expect(cart.items.every(item => item.available)).to.equal(true);",
+                  "    items = cart.items.map(({menuItemId, quantity, note}) => ({menuItemId, quantity, note}));",
+                  "  } else {",
+                  "    let indices;",
+                  "    if (plan === 'random') {",
+                  "      const pool = [0, 1, 2, 3];",
+                  "      indices = [pool.splice(Math.floor(Math.random() * pool.length), 1)[0]];",
+                  "      indices.push(pool[Math.floor(Math.random() * pool.length)]);",
+                  "    } else {",
+                  "      pm.expect(plan, 'Dùng ví dụ 1,2 hoặc 3,4; cũng có thể dùng cart hoặc random').to.match(/^[1-4](,[1-4]){0,3}$/);",
+                  "      indices = plan.split(',').map(n => Number(n) - 1);",
+                  "      pm.expect(new Set(indices).size, 'Mỗi số món chỉ chọn một lần').to.equal(indices.length);",
+                  "    }",
+                  "    items = indices.map(i => ({menuItemId: menu.dishes[i].menuItemId, quantity: 1, note: menu.dishes[i].note}));",
+                  "  }",
+                  "  const name = 'Customer ' + slot.toUpperCase();",
+                  "  const phone = getVar('phone_customer_' + slot);",
+                  "  const order = {",
+                  "    restaurantId: menu.restaurantId, items,",
+                  "    recipient: {name, phone},",
+                  "    dropoff: {address: 'Điểm giao thử ' + name + ' gần quán', latitude: Number(menu.latitude) + (slot === 'a' ? 0.0002 : 0.0004), longitude: Number(menu.longitude)},",
+                  "    deliveryNote: 'Gọi trước khi giao', paymentMethod: 'COD'",
+                  "  };",
+                  "  const bodyStr = JSON.stringify(order);",
+                  "  const keyStr = pm.variables.replaceIn('{{$guid}}');",
+                  "  pm.environment.set('demo_order_body_' + slot, bodyStr);",
+                  "  pm.collectionVariables.set('demo_order_body_' + slot, bodyStr);",
+                  "  pm.environment.set('demo_order_key_' + slot, keyStr);",
+                  "  pm.collectionVariables.set('demo_order_key_' + slot, keyStr);",
+                  "  pm.environment.unset('demo_order_id_' + slot);",
+                  "  pm.collectionVariables.unset('demo_order_id_' + slot);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "item": [
+            {
+              "name": "Chuẩn bị Customer A — mặc định món 1 + 2",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/api/v1/customers/me/cart",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{token_customer_a}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                        "pm.variables.set('demo_slot', 'a');",
+                        "['demo_order_body_a', 'demo_order_key_a', 'demo_order_id_a'].forEach(key => { pm.environment.unset(key); pm.collectionVariables.unset(key); });"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "name": "Chuẩn bị Customer B — mặc định món 3 + 4",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/api/v1/customers/me/cart",
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{token_customer_b}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                        "pm.variables.set('demo_slot', 'b');",
+                        "['demo_order_body_b', 'demo_order_key_b', 'demo_order_id_b'].forEach(key => { pm.environment.unset(key); pm.collectionVariables.unset(key); });"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Đặt đơn Customer A — gửi lại cùng key nếu timeout",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/customers/me/orders",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_customer_a}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{demo_order_body_a}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{demo_order_key_a}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const getVar = (k) => pm.variables.get(k) || pm.environment.get(k) || pm.collectionVariables.get(k);",
+                  "if (!getVar('demo_order_key_a') || !getVar('demo_order_body_a')) {",
+                  "  pm.execution.skipRequest();",
+                  "  throw new Error('Chạy Chuẩn bị Customer A cho đơn mới.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lưu đúng đơn Customer A', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const order = pm.response.json();",
+                  "  const getVar = (k) => pm.variables.get(k) || pm.environment.get(k) || pm.collectionVariables.get(k);",
+                  "  const sent = JSON.parse(getVar('demo_order_body_a'));",
+                  "  pm.expect(order.orderId).to.be.a('string').and.not.empty;",
+                  "  pm.expect(order.restaurantId).to.equal(sent.restaurantId);",
+                  "  pm.expect(order.items.map(i => i.menuItemId)).to.have.members(sent.items.map(i => i.menuItemId));",
+                  "  pm.expect(order.recipient.phone).to.equal(sent.recipient.phone);",
+                  "  pm.environment.set('demo_order_id_a', order.orderId);",
+                  "  pm.collectionVariables.set('demo_order_id_a', order.orderId);",
+                  "  pm.environment.set('demo_shop_a', order.restaurantId);",
+                  "  pm.collectionVariables.set('demo_shop_a', order.restaurantId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Đặt đơn Customer B — gửi lại cùng key nếu timeout",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/customers/me/orders",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_customer_b}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{{demo_order_body_b}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{demo_order_key_b}}"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const getVar = (k) => pm.variables.get(k) || pm.environment.get(k) || pm.collectionVariables.get(k);",
+                  "if (!getVar('demo_order_key_b') || !getVar('demo_order_body_b')) {",
+                  "  pm.execution.skipRequest();",
+                  "  throw new Error('Chạy Chuẩn bị Customer B cho đơn mới.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lưu đúng đơn Customer B', () => {",
+                  "  pm.response.to.have.status(201);",
+                  "  const order = pm.response.json();",
+                  "  const getVar = (k) => pm.variables.get(k) || pm.environment.get(k) || pm.collectionVariables.get(k);",
+                  "  const sent = JSON.parse(getVar('demo_order_body_b'));",
+                  "  pm.expect(order.orderId).to.be.a('string').and.not.empty;",
+                  "  pm.expect(order.restaurantId).to.equal(sent.restaurantId);",
+                  "  pm.expect(order.items.map(i => i.menuItemId)).to.have.members(sent.items.map(i => i.menuItemId));",
+                  "  pm.expect(order.recipient.phone).to.equal(sent.recipient.phone);",
+                  "  pm.environment.set('demo_order_id_b', order.orderId);",
+                  "  pm.collectionVariables.set('demo_order_id_b', order.orderId);",
+                  "  pm.environment.set('demo_shop_b', order.restaurantId);",
+                  "  pm.collectionVariables.set('demo_shop_b', order.restaurantId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 — Quán nhận hai đơn của folder 06",
+      "description": "Chạy sau khi cả hai đơn đã đặt. Sau khi quán nhận, tài xế online có thể bấm ↻ để bỏ qua lời mời và tìm đơn còn lại.",
+      "item": [
+        {
+          "name": "Đăng nhập nhà hàng",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{merchantPhone}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('token_demo_merchant');",
+                  "pm.collectionVariables.unset('token_demo_merchant');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Đăng nhập đúng tài khoản nhà hàng', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const account = pm.response.json();",
+                  "  pm.expect(account.role).to.equal('MERCHANT');",
+                  "  pm.expect(account.accessToken).to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('token_demo_merchant', account.accessToken);",
+                  "  pm.collectionVariables.set('token_demo_merchant', account.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Quán nhận đơn Customer A",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/merchant/restaurants/{{demo_shop_a}}/orders/{{demo_order_id_a}}/accept",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_demo_merchant}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"estimatedPreparationMinutes\":10}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Quán đang chuẩn bị đơn A', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('PREPARING');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Quán nhận đơn Customer B",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/merchant/restaurants/{{demo_shop_b}}/orders/{{demo_order_id_b}}/accept",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_demo_merchant}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"estimatedPreparationMinutes\":10}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Quán đang chuẩn bị đơn B', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json().status).to.equal('PREPARING');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 — Kiểm tra hủy / bỏ qua (gửi riêng từng request)",
+      "description": "Các nhánh độc lập theo trạng thái, không Run folder này. Gửi request hiện trạng của tài xế ngay trước khi thử bỏ qua/báo sự cố. Với ảnh bằng chứng, chọn file JPEG/PNG thật ở Body; dùng GPS tài xế từ app.",
+      "item": [
+        {
+          "name": "Customer A hủy trước khi quán nhận",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/customers/me/orders/{{demo_order_id_a}}/cancel",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_customer_a}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reason\":\"Khách đổi kế hoạch\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Nhà hàng báo hết món khi đang chuẩn bị đơn B",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/merchant/restaurants/{{demo_shop_b}}/orders/{{demo_order_id_b}}/cancel",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_demo_merchant}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"reasonCode\":\"RESTAURANT_OUT_OF_STOCK\",\"reason\":\"Hết nguyên liệu cho món đã đặt\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        },
+        {
+          "name": "Đăng nhập tài xế demo",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phoneNumber\": \"{{phone_demo_driver}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('token_demo_driver');",
+                  "pm.collectionVariables.unset('token_demo_driver');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Đăng nhập đúng tài khoản tài xế demo', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const account = pm.response.json();",
+                  "  pm.expect(account.role).to.equal('DRIVER');",
+                  "  pm.expect(account.accessToken).to.be.a('string').and.not.empty;",
+                  "  pm.environment.set('token_demo_driver', account.accessToken);",
+                  "  pm.collectionVariables.set('token_demo_driver', account.accessToken);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Đọc lời mời đang hiển thị cho tài xế",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/drivers/me/offers",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_demo_driver}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('demo_skip_ids');",
+                  "pm.collectionVariables.unset('demo_skip_ids');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Đọc lời mời', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const first = pm.response.json()[0];",
+                  "  const val = JSON.stringify(first ? [first.assignmentId] : []);",
+                  "  pm.environment.set('demo_skip_ids', val);",
+                  "  pm.collectionVariables.set('demo_skip_ids', val);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "↻ Bỏ qua lời mời vừa đọc và tìm đơn kế tiếp",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/offers/refresh",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_demo_driver}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"skippedAssignmentIds\":{{demo_skip_ids}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const getVar = (k) => pm.variables.get(k) || pm.environment.get(k) || pm.collectionVariables.get(k);",
+                  "if (!getVar('demo_skip_ids')) {",
+                  "  pm.execution.skipRequest();",
+                  "  throw new Error('Đọc lời mời hiện tại trước khi bỏ qua.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Lời mời đã bỏ qua vắng mặt trong kết quả', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const getVar = (k) => pm.variables.get(k) || pm.environment.get(k) || pm.collectionVariables.get(k);",
+                  "  const skipped = JSON.parse(getVar('demo_skip_ids') || '[]');",
+                  "  pm.expect(pm.response.json().some(o => skipped.includes(o.assignmentId))).to.equal(false);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Đọc chuyến hiện tại trước khi báo sự cố",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/v1/drivers/me/deliveries/current",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_demo_driver}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "description": "Trả 204 khi tài xế đang rảnh. Chạy khi đang giao để lưu đúng deliveryId + assignmentId và tạo khóa thử lại cho báo cáo."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['demo_delivery_id', 'demo_assignment_id', 'demo_report_id'].forEach(k => { pm.environment.unset(k); pm.collectionVariables.unset(k); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Tài xế đang có chuyến để báo sự cố', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const trip = pm.response.json();",
+                  "  pm.expect(trip.assignmentId).to.be.a('string').and.not.empty;",
+                  "  const repId = pm.variables.replaceIn('{{$guid}}');",
+                  "  pm.environment.set('demo_delivery_id', trip.deliveryId);",
+                  "  pm.collectionVariables.set('demo_delivery_id', trip.deliveryId);",
+                  "  pm.environment.set('demo_assignment_id', trip.assignmentId);",
+                  "  pm.collectionVariables.set('demo_assignment_id', trip.assignmentId);",
+                  "  pm.environment.set('demo_report_id', repId);",
+                  "  pm.collectionVariables.set('demo_report_id', repId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Tài xế trả chuyến trước READY — xe hỏng",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/deliveries/{{demo_delivery_id}}/incident",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_demo_driver}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "assignmentId",
+                  "value": "{{demo_assignment_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "requestId",
+                  "value": "{{demo_report_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reason",
+                  "value": "VEHICLE_BREAKDOWN",
+                  "type": "text"
+                },
+                {
+                  "key": "note",
+                  "value": "Xe bị hỏng trên đường đến quán",
+                  "type": "text"
+                }
+              ]
+            },
+            "description": "Đơn đang PREPARING. Hệ thống giải phóng tài xế và tìm người nhận thay. Nếu timeout, gửi lại cùng requestId."
+          }
+        },
+        {
+          "name": "Khách không nghe máy trước READY — trả chuyến kèm ảnh cuộc gọi",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/deliveries/{{demo_delivery_id}}/incident",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_demo_driver}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "assignmentId",
+                  "type": "text",
+                  "value": "{{demo_assignment_id}}"
+                },
+                {
+                  "key": "requestId",
+                  "type": "text",
+                  "value": "{{demo_report_id}}"
+                },
+                {
+                  "key": "reason",
+                  "type": "text",
+                  "value": "CUSTOMER_UNREACHABLE"
+                },
+                {
+                  "key": "note",
+                  "type": "text",
+                  "value": "Đã gọi khách để xác nhận địa chỉ khi quán đang chuẩn bị món"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": null
+                }
+              ]
+            },
+            "description": "Áp dụng khi đơn còn PREPARING và tài xế chưa lấy hàng. Chạy request đọc chuyến hiện tại rồi chọn ảnh JPEG/PNG của cuộc gọi không được trả lời ở Body → image. Khi thành công, tài xế được trả chuyến và hệ thống tìm người giao thay. Giữ nguyên requestId, ghi chú và ảnh khi gửi lại sau timeout."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Trả đúng chuyến để phân công lại', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const receipt = pm.response.json();",
+                  "  const getVar = (k) => pm.variables.get(k) || pm.environment.get(k) || pm.collectionVariables.get(k);",
+                  "  pm.expect(receipt.deliveryId).to.equal(getVar('demo_delivery_id'));",
+                  "  pm.expect(receipt.assignmentId).to.equal(getVar('demo_assignment_id'));",
+                  "  pm.expect(receipt.reason).to.equal('CUSTOMER_UNREACHABLE');",
+                  "  pm.expect(receipt.outcome).to.equal('PENDING_REASSIGNMENT');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Khách không nghe máy tại điểm giao — đính kèm ảnh cuộc gọi",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/v1/drivers/me/deliveries/{{demo_delivery_id}}/failure-report",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{token_demo_driver}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "assignmentId",
+                  "value": "{{demo_assignment_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "requestId",
+                  "value": "{{demo_report_id}}",
+                  "type": "text"
+                },
+                {
+                  "key": "reason",
+                  "value": "CUSTOMER_UNREACHABLE",
+                  "type": "text"
+                },
+                {
+                  "key": "note",
+                  "value": "Đã gọi khách tại điểm giao",
+                  "type": "text"
+                },
+                {
+                  "key": "image",
+                  "type": "file",
+                  "src": null
+                }
+              ]
+            },
+            "description": "Chuyến ở AT_DROPOFF. Chọn ảnh JPEG/PNG bằng chứng nhật ký cuộc gọi trong trường image. Nếu timeout, gửi lại cùng requestId và cùng ảnh."
+          }
+        }
       ]
     }
   ]
