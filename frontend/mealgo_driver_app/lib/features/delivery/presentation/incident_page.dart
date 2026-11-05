@@ -13,10 +13,12 @@ class IncidentPage extends StatefulWidget {
     required this.controller,
     required this.order,
     required this.reason,
+    required this.reasonLabel,
   });
   final DriverController controller;
   final DeliveryOrder order;
   final String reason;
+  final String reasonLabel;
   @override
   State<IncidentPage> createState() => _IncidentPageState();
 }
@@ -29,6 +31,8 @@ class _IncidentPageState extends State<IncidentPage> {
   String? _error;
   bool _sending = false;
   bool get _closed => widget.reason == 'RESTAURANT_CLOSED';
+  bool get _requiresPhoto => _closed || widget.reason == 'CUSTOMER_UNREACHABLE';
+  String get _photoLabel => _closed ? 'ảnh quán đóng cửa' : 'ảnh chụp lịch sử cuộc gọi nhỡ';
   @override
   void dispose() {
     _note.dispose();
@@ -70,17 +74,11 @@ class _IncidentPageState extends State<IncidentPage> {
         children: [
           Text(
             _closed
-                ? 'Gửi ảnh quán đóng cửa để hủy đơn ngay. Cần GPS mới tại quán và chưa lấy hàng.'
-                : 'Đơn sẽ trở về hàng chờ phân công. Chưa đảm bảo đã có tài xế khác nhận.',
+                ? 'Đính kèm ảnh quán đóng cửa và cập nhật GPS tại quán để chuyển chuyến cho tài xế khác.'
+                : 'Khi xác nhận, đơn hàng sẽ được phân phối cho tài xế khác.',
           ),
           const SizedBox(height: 16),
-          Text(
-            widget.reason == 'PERSONAL'
-                ? 'Lý do cá nhân'
-                : _closed
-                ? 'Quán đóng cửa'
-                : 'Quán chuẩn bị chậm',
-          ),
+          Text(widget.reasonLabel),
           TextField(
             controller: _note,
             enabled: !_sending,
@@ -89,7 +87,7 @@ class _IncidentPageState extends State<IncidentPage> {
             onChanged: (_) => _requestId = DriverStore.uuid(),
             decoration: const InputDecoration(labelText: 'Mô tả sự việc'),
           ),
-          if (_closed) ...[
+          if (_requiresPhoto) ...[
             if (_bytes != null)
               Image.memory(_bytes!, height: 200, fit: BoxFit.contain),
             Wrap(
@@ -111,7 +109,7 @@ class _IncidentPageState extends State<IncidentPage> {
             ),
             Text(
               _bytes == null
-                  ? 'Thêm ảnh quán đóng cửa (PNG hoặc JPEG, tối đa 5 MB).'
+                  ? 'Thêm $_photoLabel (PNG hoặc JPEG, tối đa 5 MB).'
                   : 'Đã đính kèm bằng chứng. Có thể chọn ảnh khác.',
             ),
           ],
@@ -122,13 +120,10 @@ class _IncidentPageState extends State<IncidentPage> {
             child: Text(
               _sending
                   ? 'Đang gửi…'
-                  : _closed
+                  : _requiresPhoto
                   ? 'Gửi ảnh và bỏ chuyến'
                   : 'Xác nhận chuyển đơn',
             ),
-          ),
-          const Text(
-            'Không phát sinh tiền công hoặc khoản bồi thường cho thao tác này.',
           ),
         ],
       ),
@@ -136,8 +131,8 @@ class _IncidentPageState extends State<IncidentPage> {
   );
 
   Future<void> _submit() async {
-    if (_closed && _bytes == null) {
-      setState(() => _error = 'Vui lòng đính kèm ảnh quán đóng cửa.');
+    if (_requiresPhoto && _bytes == null) {
+      setState(() => _error = 'Vui lòng đính kèm $_photoLabel.');
       return;
     }
     setState(() {
@@ -160,14 +155,13 @@ class _IncidentPageState extends State<IncidentPage> {
       _error = ok ? null : widget.controller.error;
     });
     if (!ok) return;
+    if (ModalRoute.of(context)?.isCurrent != true) return;
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('Đã bỏ chuyến'),
-        content: Text(
-          'Bạn không còn phụ trách chuyến này. Đơn hàng vẫn tiếp tục và đang chờ tài xế khác.',
-        ),
+        content: const Text('Đơn hàng sẽ được phân phối cho tài xế khác'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -176,6 +170,6 @@ class _IncidentPageState extends State<IncidentPage> {
         ],
       ),
     );
-    if (mounted) Navigator.pop(context);
+    if (mounted && ModalRoute.of(context)?.isCurrent == true) Navigator.pop(context);
   }
 }

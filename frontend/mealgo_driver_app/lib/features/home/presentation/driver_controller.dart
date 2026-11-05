@@ -36,6 +36,7 @@ class DriverController extends ChangeNotifier {
   Map<String, dynamic>? lastIncident;
   bool online = false;
   bool busy = false;
+  bool refreshingOffers = false;
   bool initialized = false;
   bool showingActive = false;
   String? error;
@@ -57,6 +58,17 @@ class DriverController extends ChangeNotifier {
   DriverEventStream? _events;
   bool _refreshPending = false;
   bool _polling = false;
+  int _revision = 0;
+  String? _trackedDeliveryId;
+  String? _cancellationMessage;
+  String? get cancellationMessage => _cancellationMessage;
+  String? takeCancellationMessage() {
+    final message = _cancellationMessage;
+    _cancellationMessage = null;
+    return message;
+  }
+  bool get canRefreshFreePick =>
+      online && !showingActive && activeOrder == null && offer == null;
   BackendRepositories? get backend =>
       _dependencies.delivery is BackendRepositories
       ? _dependencies.delivery as BackendRepositories
@@ -67,9 +79,13 @@ class DriverController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  Future<bool> _run(Future<void> Function() action) async {
+  Future<bool> _run(Future<void> Function() action, {bool refreshOffers = false}) async {
     if (busy || _disposed) return false;
+    // Invalidate reads started before a driver action.
+    _revision++;
+    if (_polling) _refreshPending = true;
     busy = true;
+    refreshingOffers = refreshOffers;
     lastRequestConnectionFailed = false;
     error = null;
     _notify();
@@ -86,6 +102,7 @@ class DriverController extends ChangeNotifier {
       return false;
     } finally {
       busy = false;
+      refreshingOffers = false;
       _notify();
       if (_refreshPending && !_disposed) _pollBackend();
     }
@@ -105,7 +122,8 @@ class DriverController extends ChangeNotifier {
     initialized = true;
     if (backend != null) {
       online = backend!.store.profile?['onlineStatus'] == 'ONLINE';
-      activeOrder = await backend!.current();
+      _trackedDeliveryId = await backend!.store.storage.read(key: _trackingKey);
+      await _syncCurrent(await backend!.current(), _revision);
       showingActive = activeOrder != null;
       _history
         ..clear()
@@ -115,20 +133,67 @@ class DriverController extends ChangeNotifier {
         (_) => _pollBackend(),
       );
       _events ??= DriverEventStream(backend!.store.api, () {
-        _refreshPending = true;
-        _pollBackend();
+        syncFromServer();
       })..connect();
     }
     serverUnavailable = false;
   });
 
+  String get _trackingKey => 'active_delivery_${profile!.id}';
+
+  Future<void> _rememberActive(String? id) async {
+    if (backend == null || _trackedDeliveryId == id) return;
+    _trackedDeliveryId = id;
+    if (id == null) {
+      await backend!.store.storage.delete(key: _trackingKey);
+    } else {
+      await backend!.store.storage.write(key: _trackingKey, value: id);
+    }
+  }
+
+  Future<void> _syncCurrent(DeliveryOrder? current, int revision) async {
+    final previous = _trackedDeliveryId;
+    final ended = previous != null && previous != current?.id
+        ? await backend!.pastDelivery(previous)
+        : null;
+    if (_disposed || revision != _revision) return;
+    activeOrder = current;
+    if (previous != null && previous != current?.id) {
+      selectedOrder = null;
+      showingActive = current != null;
+      if (ended?.stage == DeliveryStage.cancelled) {
+        _cancellationMessage = switch (ended?.cancellationCode) {
+          'CUSTOMER_CANCELLED' => 'Khách hàng đã hủy đơn này',
+          'RESTAURANT_OUT_OF_STOCK' => 'Nhà hàng đã hủy đơn do hết món',
+          'RESTAURANT_ISSUE' => 'Nhà hàng đã hủy đơn do sự cố tại quán',
+          _ => 'Đơn hàng đã được hủy',
+        };
+        _history.removeWhere((o) => o.id == ended!.id);
+        _history.insert(0, ended!);
+        account?.invalidate();
+      }
+    }
+    await _rememberActive(current?.id);
+  }
+
+  void syncFromServer() {
+    if (backend == null || !initialized || _disposed) return;
+    _refreshPending = true;
+    _pollBackend();
+  }
+
   Future<void> _pollBackend() async {
     if (busy || _polling || _disposed || backend == null) return;
     _polling = true;
     _refreshPending = false;
+    final revision = _revision;
     try {
-      _available = await backend!.getAvailable();
-      activeOrder = await backend!.current();
+      final offers = await backend!.getAvailable();
+      final current = await backend!.current();
+      if (_disposed || revision != _revision) return;
+      await _syncCurrent(current, revision);
+      if (_disposed || revision != _revision) return;
+      _available = offers;
       online = backend!.store.profile?['onlineStatus'] == 'ONLINE';
       if (!_available.any((o) => o.id == selectedOrder?.id))
         selectedOrder = null;
@@ -136,6 +201,7 @@ class DriverController extends ChangeNotifier {
       serverUnavailable = false;
       _notify();
     } catch (e) {
+      if (_disposed || revision != _revision) return;
       if (_isServerFailure(e)) serverUnavailable = true;
       error = e.toString();
       _notify();
@@ -170,10 +236,15 @@ class DriverController extends ChangeNotifier {
     _notify();
   }
 
-  Future<bool> refresh() => _run(() async {
-    _available = await _dependencies.delivery.getAvailable();
-    if (!_available.any((o) => o.id == selectedOrder?.id)) selectedOrder = null;
-  });
+  Future<bool> refreshFreePick(DeliveryOrder? displayed) async {
+    if (!canRefreshFreePick) return false;
+    return _run(() async {
+      _available = await _dependencies.delivery.refreshOffers([
+        if (displayed != null) displayed,
+      ]);
+      selectedOrder = null;
+    }, refreshOffers: true);
+  }
 
   Future<bool> accept(DeliveryOrder order) => _run(() async {
     if (!online) throw StateError('Bạn cần vào ca trước khi nhận đơn.');
@@ -183,6 +254,7 @@ class DriverController extends ChangeNotifier {
     _available = _available.where((o) => o.id != order.id).toList();
     selectedOrder = null;
     showingActive = true;
+    await _rememberActive(activeOrder!.id);
   });
 
   Future<bool> advance() => _run(() async {
@@ -193,6 +265,7 @@ class DriverController extends ChangeNotifier {
       completedToday++;
       earnedToday += updated.fee;
       _finish(updated);
+      await _rememberActive(null);
       account?.invalidate();
     } else {
       activeOrder = updated;
@@ -219,7 +292,7 @@ class DriverController extends ChangeNotifier {
     List<int>? bytes,
     String filename,
   ) => _run(() async {
-    if (activeOrder != null && activeOrder!.id != deliveryId)
+    if (activeOrder?.id != deliveryId || !activeOrder!.canRelease)
       throw StateError('Chuyến hiện tại đã thay đổi. Hãy làm mới.');
     final repository = _dependencies.delivery;
     if (repository is! DeliveryIncidentRepository)
@@ -229,11 +302,17 @@ class DriverController extends ChangeNotifier {
     activeOrder = null;
     selectedOrder = null;
     showingActive = false;
+    await _rememberActive(null);
+    syncFromServer();
     account?.invalidate();
   });
 
   Future<bool> reportFailure(DeliveryReport report) => _run(() async {
+    if (activeOrder?.id != report.orderId) {
+      throw StateError('Chuyến hiện tại đã thay đổi. Hãy làm mới.');
+    }
     _finish(await _dependencies.delivery.report(report));
+    await _rememberActive(null);
     account?.invalidate();
   });
 

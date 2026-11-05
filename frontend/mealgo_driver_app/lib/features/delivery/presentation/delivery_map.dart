@@ -78,14 +78,17 @@ class _DeliveryMapState extends State<DeliveryMap> {
       _lastRouteOrigin = null;
       _routeDistanceMeters = null;
       _routeTimeSeconds = null;
-      unawaited(_loadRoute());
+      widget.store.routeDistanceMeters = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_loadRoute());
+      });
     }
   }
 
   @override
   void dispose() {
     widget.store.removeListener(_locationChanged);
-    widget.store.updateRouteDistance(null);
+    widget.store.routeDistanceMeters = null;
     super.dispose();
   }
 
@@ -148,6 +151,8 @@ class _DeliveryMapState extends State<DeliveryMap> {
       return;
     }
     _routeLoading = true;
+    final routeOrder = widget.order.id;
+    bool stillCurrent() => mounted && widget.order.id == routeOrder && _destination == destination;
     try {
       final result = await vietmap.Vietmap.routing(
         vietmap.VietMapRoutingParams(
@@ -158,6 +163,7 @@ class _DeliveryMapState extends State<DeliveryMap> {
           vehicle: vietmap.VehicleType.motorcycle,
         ),
       );
+      if (!stillCurrent()) return;
       result.fold(
         (_) {
           if (mounted) {
@@ -171,7 +177,7 @@ class _DeliveryMapState extends State<DeliveryMap> {
         (route) {
           final path = route.paths?.firstOrNull;
           final points = path?.pointsLatLng;
-          if (points == null || !mounted) {
+          if (points == null) {
             widget.store.updateRouteDistance(straightLineMeters);
             return;
           }
@@ -190,15 +196,15 @@ class _DeliveryMapState extends State<DeliveryMap> {
         },
       );
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _routeUnavailable = true;
-          _routeDistanceMeters = straightLineMeters;
-        });
-      }
+      if (!stillCurrent()) return;
+      setState(() {
+        _routeUnavailable = true;
+        _routeDistanceMeters = straightLineMeters;
+      });
       widget.store.updateRouteDistance(straightLineMeters);
     } finally {
       _routeLoading = false;
+      if (mounted && !stillCurrent()) unawaited(_loadRoute());
     }
   }
 

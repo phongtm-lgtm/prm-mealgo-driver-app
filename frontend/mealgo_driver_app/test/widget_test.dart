@@ -8,6 +8,40 @@ import 'package:mealgo_driver_app/features/driver/presentation/settings_page.dar
 import 'package:mealgo_driver_app/shared/widgets/app_widgets.dart';
 
 void main() {
+  testWidgets('Free-Pick refresh skips only the displayed request', (
+    tester,
+  ) async {
+    final controller = DriverController(AppDependencies.mock());
+    await tester.runAsync(() async {
+      await controller.initialize();
+      await controller.setOnline(true);
+    });
+    addTearDown(controller.dispose);
+    final orders = controller.available;
+    controller.selectOrder(orders[1]);
+    await tester.pumpWidget(MaterialApp(home: HomePage(controller: controller)));
+
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pump();
+    expect(find.bySemanticsLabel('Đang tìm đơn mới'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(controller.selectedOrder, isNull);
+    expect(controller.available.map((o) => o.id), [orders[0].id, orders[2].id]);
+    expect(find.text('2 đơn khả dụng'), findsOneWidget);
+    expect(find.textContaining('#${orders[0].id}'), findsOneWidget);
+    expect(find.textContaining('#${orders[1].id}'), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pumpAndSettle();
+    expect(controller.available.single.id, orders[2].id);
+    await tester.tap(find.byIcon(Icons.refresh));
+    await tester.pumpAndSettle();
+    expect(find.text('0 đơn khả dụng'), findsOneWidget);
+    await tester.tap(find.byTooltip('Tìm đơn mới'));
+    await tester.pumpAndSettle();
+    expect(controller.available, isEmpty);
+  });
+
   testWidgets('Logout requires confirmation and can be cancelled', (
     tester,
   ) async {

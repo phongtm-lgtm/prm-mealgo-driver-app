@@ -13,15 +13,60 @@ import '../../driver/presentation/settings_page.dart';
 import 'driver_controller.dart';
 import 'face_verification_page.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key, required this.controller, this.onLogout});
   final Future<void> Function()? onLogout;
   final DriverController controller;
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
+  DriverController get controller => widget.controller;
+  Future<void> Function()? get onLogout => widget.onLogout;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) controller.syncFromServer();
+  }
+
+  void _showCancellation() {
+    if (!mounted) return;
+    final message = controller.takeCancellationMessage();
+    if (message == null) return;
+    // Close any incident form, confirmation or order details above the radar.
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Đơn hàng đã hủy'),
+        content: Text(message),
+        actions: [
+          FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Đã hiểu')),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
     builder: (context, _) {
+      if (controller.cancellationMessage != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _showCancellation());
+      }
       if (controller.serverUnavailable) {
         return ServerErrorView(
           loading: controller.busy,
@@ -115,7 +160,7 @@ class HomePage extends StatelessWidget {
         bottomNavigationBar:
             controller.showingActive && controller.activeOrder != null
             ? Material(
-                color: AppColors.background,
+                color: AppColors.ink,
                 elevation: 8,
                 child: SafeArea(
                   top: false,
@@ -147,6 +192,9 @@ class HomePage extends StatelessWidget {
             Expanded(
               child: LayoutBuilder(
                 builder: (context, constraints) {
+                  final available = controller.available;
+                  final freePickOrder =
+                      controller.selectedOrder ?? available.firstOrNull;
                   final displayedOrder = controller.showingActive
                       ? controller.activeOrder
                       : (controller.selectedOrder ??
@@ -185,16 +233,30 @@ class HomePage extends StatelessWidget {
                               right: 12,
                               child: Column(
                                 children: [
-                                  FloatingActionButton.small(
-                                    heroTag: 'refresh',
-                                    tooltip: 'Làm mới đơn',
-                                    backgroundColor: Colors.white,
-                                    onPressed: controller.busy
-                                        ? null
-                                        : controller.refresh,
-                                    child: const Icon(Icons.refresh),
-                                  ),
-                                  const SizedBox(height: 8),
+                                  if (controller.canRefreshFreePick) ...[
+                                    FloatingActionButton.small(
+                                      heroTag: 'refresh',
+                                      tooltip: freePickOrder == null
+                                          ? 'Tìm đơn mới'
+                                          : 'Bỏ qua đơn #${shortReference(freePickOrder.orderId ?? freePickOrder.id)} và tìm đơn khác',
+                                      backgroundColor: Colors.white,
+                                      onPressed: controller.busy
+                                          ? null
+                                          : () => controller.refreshFreePick(
+                                              freePickOrder,
+                                            ),
+                                    child: controller.refreshingOffers
+                                        ? const SizedBox.square(
+                                            dimension: 19,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              semanticsLabel: 'Đang tìm đơn mới',
+                                            ),
+                                          )
+                                        : const Icon(Icons.refresh),
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
                                   FloatingActionButton.small(
                                     heroTag: 'location',
                                     tooltip: 'Cập nhật GPS',
@@ -333,7 +395,7 @@ class HomePage extends StatelessWidget {
                                 Row(
                                   children: [
                                     Text(
-                                      '${controller.available.length} đơn khả dụng',
+                                      '${available.length} đơn khả dụng',
                                       style: const TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.w800,
@@ -347,13 +409,13 @@ class HomePage extends StatelessWidget {
                                   ],
                                 ),
                                 const SizedBox(height: 12),
-                                if (controller.available.isEmpty)
+                                if (available.isEmpty)
                                   const SectionCard(
                                     child: Text(
-                                      'Không có đơn phù hợp. Thử tăng khoảng cách trong cài đặt.',
+                                      'Chưa có đơn phù hợp. Bạn có thể tìm lại sau.',
                                     ),
                                   ),
-                                for (final order in controller.available)
+                                for (final order in available)
                                   Padding(
                                     padding: const EdgeInsets.only(bottom: 8),
                                     child: Material(
@@ -375,6 +437,7 @@ class HomePage extends StatelessWidget {
                                           ),
                                         ),
                                         subtitle: Text(
+                                          '#${shortReference(order.orderId ?? order.id)} • '
                                           '${formatDeliveryDistance(order.distance, available: order.hasDistance)} • đường chim bay',
                                         ),
                                         trailing: Text(

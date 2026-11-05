@@ -27,6 +27,7 @@ public final class ApiDocumentation {
         Map.entry("DriverAccountController", "09. Ví, thu nhập và thông báo"),
         Map.entry("AdminEarningController", "10. Quản trị tiền công"),
         Map.entry("CustomerCartController", "11. Giỏ hàng khách hàng"),
+        Map.entry("CustomerMenuController", "11. Thực đơn khách hàng"),
         Map.entry("CustomerOrderController", "12. Đơn hàng khách hàng"),
         Map.entry("RestaurantOrderController", "13. Đơn hàng nhà hàng"));
 
@@ -34,6 +35,7 @@ public final class ApiDocumentation {
         OPERATIONS.put(controller + "." + method, new Doc(title, detail, errors));
     }
     static {
+        doc("CustomerMenuController", "list", "Tìm thực đơn theo tên nhà hàng", "Trả các nhà hàng đang nhận đơn có tên khớp, cùng mã món còn bán và đơn giá VND để thêm vào giỏ hoặc đặt đơn.", "400");
         doc("AuthController", "register", "Đăng ký tài khoản khách hàng", "Chỉ chấp nhận role=CUSTOMER. Không tạo DRIVER, MERCHANT hoặc ADMIN qua API này. Số điện thoại được chuẩn hóa về +84; mật khẩu 8–72 ký tự. Trả cặp access/refresh token sau khi tạo tài khoản.", "400,409");
         doc("AuthController", "login", "Đăng nhập bằng số điện thoại và mật khẩu", "Trả JWT và refreshToken của một phiên mới. Access token mặc định 3600 giây. Refresh session có hạn cố định mặc định 30 ngày. Không cần access token để gọi.", "400,401");
         doc("AuthController", "refresh", "Đổi refresh token lấy cặp token mới", "Mỗi lần thành công xoay vòng refreshToken; phải thay thế cả hai token ở client. Hạn 30 ngày của phiên không được gia hạn. Dùng lại token cũ sai hash sẽ thu hồi cả phiên và trả 401. Không gửi đồng thời nhiều yêu cầu refresh cùng phiên; nếu mất response xoay vòng có thể phải đăng nhập lại.", "400,401");
@@ -59,6 +61,7 @@ public final class ApiDocumentation {
         doc("DriverController", "location", "Cập nhật vị trí có thứ tự", "Phiên phải khớp phiên hiện hành. sequence dương và tăng dần; sequence cũ/trùng trả applied=false, không ghi đè. recordedAt mặc định không cũ quá 30 giây, không vượt tương lai 10 giây và không lùi so với lần trước. Giới hạn độ mới có thể cấu hình. accuracyMeters không âm. applied=true chỉ xác nhận lưu vị trí, không bảo đảm đủ điều kiện thao tác giao hàng.", "400,404,409");
 
         doc("DriverOfferController", "list", "Danh sách lời mời nhận chuyến còn hạn", "Chỉ trả assignment OFFERED chưa hết expiresAt của tài xế hiện tại. Mảng rỗng nếu không có lời mời. Không phải danh sách tất cả đơn trong hệ thống.", "404");
+        doc("DriverOfferController", "refresh", "Bỏ qua lời mời đang xem và tìm chuyến mới", "Bỏ qua các lời mời còn hạn của tài xế có assignmentId trong danh sách gửi lên. Giữ lời mời mới chưa hiển thị và tìm chuyến phù hợp nếu tài xế đang rảnh, online.", "400,404");
         doc("DriverOfferController", "get", "Xem một lời mời nhận chuyến", "id ở đường dẫn là assignmentId, không phải deliveryId. Chỉ xem lời mời thuộc tài xế; kiểm tra canRespond và expiresAt trước khi hiển thị thao tác.", "400,404");
         doc("DriverOfferController", "accept", "Chấp nhận lời mời nhận chuyến", "id là assignmentId. Cần tài xế active, online, chưa có chuyến đang giao; lời mời OFFERED còn hạn và chuyến còn PENDING_ASSIGNMENT. Thành công gán chuyến cho tài xế, chuyển ASSIGNED. Lặp lại khi assignment đã ACCEPTED trả dữ liệu hiện tại.", "400,404,409");
         doc("DriverOfferController", "reject", "Từ chối lời mời nhận chuyến", "id là assignmentId. Chỉ từ chối lời mời OFFERED còn hạn. Không hủy đơn khách; hệ thống có thể mời tài xế khác. Lặp lại khi đã REJECTED trả dữ liệu hiện tại.", "400,404,409");
@@ -73,7 +76,7 @@ public final class ApiDocumentation {
         doc("DriverDeliveryController", "fail", "Báo giao hàng thất bại kèm bằng chứng", "Chỉ khi AT_DROPOFF; assignmentId phải đúng phân công hiện tại. Multipart gồm requestId UUID do client tạo, reason, image bắt buộc và note tối đa 1000 ký tự. PNG/JPEG tối đa 5 MiB, 25 triệu pixel. Chuyển đơn/chuyến sang FAILED. Gửi lại phải giữ nguyên requestId, lý do, ghi chú và nội dung ảnh; khác dữ liệu trả 409.", "400,404,409,413");
         doc("DriverDeliveryController", "report", "Xem báo cáo giao thất bại", "id là deliveryId thuộc tài xế hiện tại. Trả lý do, ghi chú và metadata ảnh. Cache-Control no-store; ảnh tải qua endpoint bảo vệ bằng token.", "400,404");
         doc("DriverDeliveryController", "evidence", "Tải ảnh bằng chứng giao thất bại", "id là deliveryId, không phải reportId. Trả nhị phân PNG/JPEG đúng Content-Type, Cache-Control no-store và X-Content-Type-Options nosniff. Chỉ tài xế sở hữu chuyến được xem.", "400,404");
-        doc("DriverDeliveryController", "incident", "Báo sự cố và giải phóng chuyến trước lấy hàng", "KHÔNG hủy đơn khách. Chỉ cho ASSIGNED/AT_PICKUP khi đơn PREPARING; bị chặn khi READY hoặc đã lấy hàng. Chuyển assignment RELEASED, bỏ tài xế khỏi chuyến và đưa chuyến về PENDING_ASSIGNMENT. RESTAURANT_CLOSED bắt buộc ảnh PNG/JPEG tối đa 5 MiB, 25 triệu pixel và vị trí gần nhà hàng; lý do khác không nhận ảnh. note tối đa 1000 ký tự. Dùng lại requestId và dữ liệu giống hệt để thử lại an toàn, kể cả sau phân công lại; khác dữ liệu trả 409.", "400,404,409,413");
+        doc("DriverDeliveryController", "incident", "Báo sự cố và giải phóng chuyến trước lấy hàng", "Tài xế có thể trả chuyến ASSIGNED/AT_PICKUP khi đơn PREPARING. Chuyến trở về PENDING_ASSIGNMENT. CUSTOMER_UNREACHABLE yêu cầu ảnh cuộc gọi cho khách. RESTAURANT_CLOSED yêu cầu ảnh và vị trí gần quán. Ảnh PNG/JPEG tối đa 5 MiB, 25 triệu pixel. Dùng lại requestId và dữ liệu giống hệt khi thử lại.", "400,404,409,413");
         doc("DriverDeliveryController", "incidents", "Danh sách sự cố đã báo của tôi", "Trả mảng sự cố tài xế đã tạo, mới nhất trước; hiện không phân trang. outcome=PENDING_REASSIGNMENT mô tả kết quả tại lúc giải phóng, không phải trạng thái phân công hiện tại của chuyến.", "404");
         doc("DriverDeliveryController", "incidentEvidence", "Tải ảnh sự cố của tôi", "id là mã sự cố (IncidentResult.id), không phải deliveryId. Chỉ người báo xem được; trả 404 nếu sự cố không có ảnh. Trả nhị phân PNG/JPEG, không cho cache.", "400,404");
         doc("DriverEventController", "subscribe", "Kết nối luồng sự kiện tài xế (SSE)", "Trả text/event-stream, không phải JSON thông thường. Dùng Authorization: Bearer accessToken; EventSource trình duyệt mặc định không hỗ trợ header này, có thể dùng fetch streaming. Sự kiện connected khi mở, heartbeat mỗi 15 giây, orders-changed sau khi dữ liệu liên quan thay đổi; data của mỗi sự kiện là {}. Client phải tải lại offers/current để lấy trạng thái chính thức. Kết nối hết hạn sau khoảng 5 phút: làm mới token nếu cần rồi kết nối lại. Không có event ID/replay/Last-Event-ID; mất kết nối có thể bỏ lỡ sự kiện. Chỉ thông báo trong một instance, không phải message broker đa máy. Swagger UI không phù hợp hiển thị luồng dài; dùng curl -N với header Bearer.", "404");
@@ -100,7 +103,7 @@ public final class ApiDocumentation {
         doc("CustomerOrderController", "list", "Danh sách đơn hàng của tôi", "Phân trang các đơn của khách đăng nhập, mới tạo trước; không có bộ lọc thời gian ở endpoint này.", "400");
         doc("CustomerOrderController", "detail", "Chi tiết đơn hàng của tôi", "id là orderId. Chỉ chủ đơn được xem; tài nguyên ngoài quyền sở hữu trả 404.", "400,404");
         doc("CustomerOrderController", "tracking", "Theo dõi trạng thái và vị trí tài xế", "Chỉ chủ đơn. driver và driverLocation chỉ được điền khi chuyến đang thực hiện và đã gán tài xế; có thể null trước phân công hoặc sau kết thúc. Vị trí có recordedAt để client kiểm tra độ mới; không khẳng định định vị liên tục theo thời gian thực.", "400,404");
-        doc("CustomerOrderController", "cancel", "Khách hàng hủy đơn chưa được nhận", "Chỉ khi đơn PENDING. reason bắt buộc, tối đa 500 ký tự. Chuyển CANCELLED, lưu lý do; gọi lại đơn đã CANCELLED trả hiện trạng. Không cho khách tự hủy khi nhà hàng đang PREPARING.", "400,404,409");
+        doc("CustomerOrderController", "cancel", "Khách hàng hủy đơn chưa được nhận", "Khách hủy đơn PENDING bằng lý do tối đa 500 ký tự. Máy chủ lưu CUSTOMER_CANCELLED, hủy chuyến và thu hồi các lời mời nếu đã phân phối sớm. Khách có thể thử lại thao tác đã thành công.", "400,404,409");
 
         doc("RestaurantOrderController", "list", "Danh sách đơn của nhà hàng", "MERCHANT phải sở hữu restaurantId; không sở hữu trả 404. Có thể lọc status theo enum OrderStatus, phân trang từ 0 và mới tạo trước.", "400,404");
         doc("RestaurantOrderController", "detail", "Chi tiết đơn và thông tin tài xế", "Chỉ nhà hàng thuộc MERCHANT hiện tại, orderId phải thuộc nhà hàng đó. Có thể chưa có tài xế hoặc chuyến (giá trị null).",
@@ -108,7 +111,7 @@ public final class ApiDocumentation {
         doc("RestaurantOrderController", "accept", "Nhà hàng nhận đơn và bắt đầu chuẩn bị", "Chuyển PENDING → PREPARING, ước tính thời gian chuẩn bị 1–180 phút, tạo chuyến chờ phân công. Gọi lại khi PREPARING trả hiện trạng, không thay lại thời gian chuẩn bị.", "400,404,409");
         doc("RestaurantOrderController", "reject", "Nhà hàng từ chối đơn mới", "Chỉ PENDING; reason bắt buộc tối đa 500 ký tự. Chuyển REJECTED. Gọi lại khi REJECTED trả hiện trạng.", "400,404,409");
         doc("RestaurantOrderController", "ready", "Báo món đã sẵn sàng lấy", "Chuyển PREPARING → READY, ghi readyAt. Gọi lại khi READY trả hiện trạng. Sau READY, tài xế không được giải phóng chuyến qua báo sự cố trước lấy hàng.", "400,404,409");
-        doc("RestaurantOrderController", "cancel", "Nhà hàng hủy đơn trước khi sẵn sàng", "Chỉ PENDING hoặc PREPARING. Chuyển đơn và chuyến (nếu có) sang CANCELLED, hủy lời mời OFFERED/ACCEPTED liên quan, thông báo thay đổi cho tài xế. Không cho hủy từ READY trở đi. Gọi lại đơn CANCELLED trả hiện trạng.", "400,404,409");
+        doc("RestaurantOrderController", "cancel", "Nhà hàng hủy đơn đang chuẩn bị", "Áp dụng khi PREPARING. Lưu lý do hủy, hủy chuyến và các lời mời liên quan, gửi cập nhật sau khi giao dịch hoàn tất. Tài xế đã nhận chuyến có thể xem nguồn hủy trong lịch sử.", "400,404,409");
     }
 
     public static Operation describeOperation(Operation operation, HandlerMethod handler) {
@@ -186,6 +189,7 @@ public final class ApiDocumentation {
             case "AdminDriverApplicationController.approve" -> Map.of("note", "Đã kiểm tra đầy đủ hồ sơ");
             case "DriverController.register", "DriverController.update" -> Map.of("fullName", "Nguyễn Văn An", "phoneNumber", "0901234567");
             case "DriverController.online" -> Map.of("online", true);
+            case "DriverOfferController.refresh" -> Map.of("skippedAssignmentIds", List.of(uuid));
             case "DriverController.location" -> Map.of("trackingSessionId", uuid, "sequence", 1,
                 "latitude", 10.7769, "longitude", 106.7009, "accuracyMeters", 10, "recordedAt", "2026-11-04T03:07:00Z");
             case "DriverAccountController.settings" -> Map.of("autoAcceptEnabled", false, "maxDeliveryDistanceKm", 10,
@@ -199,7 +203,8 @@ public final class ApiDocumentation {
                 "recipient", Map.of("name", "Nguyễn Văn An", "phone", "0901234567"),
                 "dropoff", Map.of("address", "Địa chỉ giao minh họa", "latitude", 10.7769, "longitude", 106.7009),
                 "deliveryNote", "Gọi khi đến nơi", "paymentMethod", "COD");
-            case "CustomerOrderController.cancel", "RestaurantOrderController.cancel", "RestaurantOrderController.reject" -> Map.of("reason", "Lý do minh họa, thay bằng lý do thực tế");
+            case "RestaurantOrderController.cancel" -> Map.of("reasonCode","RESTAURANT_OUT_OF_STOCK","reason","Quán đã hết món");
+            case "CustomerOrderController.cancel", "RestaurantOrderController.reject" -> Map.of("reason", "Lý do minh họa, thay bằng lý do thực tế");
             case "RestaurantOrderController.accept" -> Map.of("estimatedPreparationMinutes", 20);
             default -> null;
         };
@@ -227,6 +232,7 @@ public final class ApiDocumentation {
             case "period" -> "Kỳ thống kê: DAY (ngày), WEEK (tuần từ thứ Hai), MONTH (tháng); mặc định DAY.";
             case "Idempotency-Key" -> "Khóa chống đặt đơn trùng, không trắng, tối đa 100 ký tự; dùng lại cùng nội dung khi retry.";
             case "restaurantId" -> "UUID nhà hàng thuộc MERCHANT hiện tại.";
+            case "restaurantName" -> "Tên đầy đủ của nhà hàng, so khớp không phân biệt chữ hoa và chữ thường.";
             case "orderId" -> "UUID đơn hàng thuộc nhà hàng đang thao tác.";
             case "menuItemId" -> "UUID món ăn trong giỏ hiện tại.";
             case "deliveryId" -> "UUID chuyến giao có nghĩa vụ tiền công chờ xác nhận.";
@@ -261,9 +267,12 @@ public final class ApiDocumentation {
         fields("Thời điểm sớm nhất được gửi lại OTP, 60 giây sau lần cấp trước.", "resendAt");
         fields("UUID chuyến giao hàng; khác orderId và assignmentId.", "deliveryId");
         fields("UUID phân công tài xế/lời mời nhận chuyến. Mỗi lần phân công lại có thể thay đổi.", "assignmentId");
+        fields("Danh sách mã lời mời tài xế muốn bỏ qua khi tìm chuyến mới.", "skippedAssignmentIds");
         fields("UUID yêu cầu do client tạo, giữ nguyên khi thử lại cùng thao tác và cùng nội dung.", "requestId");
         fields("UUID đơn hàng của khách.", "orderId");
         fields("UUID nhà hàng.", "restaurantId");
+        fields("Tên nhà hàng tại thời điểm đặt đơn.", "restaurantName");
+        fields("Giá một phần món đang bán tại nhà hàng, đơn vị VND.", "price");
         fields("UUID món ăn trong thực đơn.", "menuItemId");
         fields("UUID phiên theo dõi vị trí hiện hành; phiên mới vô hiệu phiên trước.", "trackingSessionId");
         fields("Số thứ tự vị trí dương và tăng dần trong một phiên; trùng/cũ bị bỏ qua.", "sequence");
@@ -352,6 +361,8 @@ public final class ApiDocumentation {
         fields("Thời gian chuẩn bị dự kiến tính bằng phút, số nguyên từ 1 đến 180.", "estimatedPreparationMinutes");
         fields("Có thể phản hồi lời mời tại thời điểm đọc; server vẫn kiểm tra hạn/trạng thái lúc nhận yêu cầu.", "canRespond");
         fields("Lý do đơn bị hủy hoặc bị từ chối; có thể null.", "cancellationReason");
+        fields("Mã nguồn hủy để tài xế nhận biết khách đổi ý, quán hết món hoặc sự cố khác tại quán. Có thể null với đơn cũ.", "cancellationCode");
+        fields("Mã lý do quán hủy đơn đang chuẩn bị. Chọn RESTAURANT_OUT_OF_STOCK (mặc định) hoặc RESTAURANT_ISSUE.", "reasonCode");
         fields("Nghĩa vụ đã được quản trị xác nhận tiền công hay chưa.", "resolved");
         fields("Đơn hàng kèm snapshot giá và thông tin giao nhận.", "order");
         for (String name : List.of("createdAt", "updatedAt", "startedAt", "submittedAt", "reviewedAt", "resolvedAt",
@@ -397,7 +408,7 @@ public final class ApiDocumentation {
                     if (media.getSchema() != null && media.getSchema().getProperties() != null) {
                         var reason = (Schema) media.getSchema().getProperties().get("reason");
                         if (reason != null && op.getOperationId().startsWith("DriverDelivery_incident_")) reason.setDescription(
-                            "Sự cố trước lấy hàng: PERSONAL (cá nhân), RESTAURANT_DELAY (nhà hàng chậm), RESTAURANT_CLOSED (đóng cửa, bắt buộc ảnh và vị trí gần nhà hàng).");
+                            "Chọn PERSONAL, VEHICLE_BREAKDOWN, BAD_WEATHER, RESTAURANT_DELAY, RESTAURANT_CLOSED hoặc CUSTOMER_UNREACHABLE. Khách không nghe máy yêu cầu ảnh cuộc gọi. Quán đóng cửa yêu cầu ảnh và vị trí gần quán.");
                         if (reason != null && op.getOperationId().startsWith("DriverDelivery_fail_")) reason.setDescription(
                             "Lý do giao thất bại: CUSTOMER_UNREACHABLE (không liên lạc được khách), CUSTOMER_REFUSED (khách từ chối), OTHER (khác).");
                     }
@@ -418,11 +429,11 @@ public final class ApiDocumentation {
                 else if (schemaName.endsWith("OrderResponse")) field.setDescription("Trạng thái đơn: PENDING (chờ nhà hàng), PREPARING (chuẩn bị), READY (sẵn sàng), PICKED_UP (đã lấy), DELIVERED (đã giao), REJECTED (từ chối), CANCELLED (hủy), FAILED (giao thất bại).");
             }
             if (name.equals("reason") && schemaName.endsWith("IncidentResult")) field.setDescription(
-                "Lý do giải phóng chuyến: PERSONAL (việc cá nhân), RESTAURANT_DELAY (nhà hàng chậm), RESTAURANT_CLOSED (nhà hàng đóng cửa, cần ảnh và vị trí gần).");
+                "Lý do giải phóng chuyến gồm PERSONAL, VEHICLE_BREAKDOWN, BAD_WEATHER, RESTAURANT_DELAY, RESTAURANT_CLOSED và CUSTOMER_UNREACHABLE.");
             if (name.equals("reason") && schemaName.endsWith("Report")) field.setDescription(
                 "Lý do giao thất bại: CUSTOMER_UNREACHABLE (không liên lạc được khách), CUSTOMER_REFUSED (khách từ chối), OTHER (lý do khác).");
             if (name.equals("reason") && schemaName.equals("multipart")) field.setDescription(
-                "Sự cố trước lấy hàng: PERSONAL (cá nhân), RESTAURANT_DELAY (nhà hàng chậm), RESTAURANT_CLOSED (đóng cửa); " +
+                "Trước khi lấy hàng chọn PERSONAL, VEHICLE_BREAKDOWN, BAD_WEATHER, RESTAURANT_DELAY, RESTAURANT_CLOSED hoặc CUSTOMER_UNREACHABLE. " +
                 "giao thất bại: CUSTOMER_UNREACHABLE (không liên lạc được), CUSTOMER_REFUSED (khách từ chối), OTHER (khác). Chọn enum đúng endpoint.");
             if (name.equals("phoneNumber")) field.setExample("0901234567");
             if (name.equals("otp") || name.equals("devOtp")) field.setExample("12345");

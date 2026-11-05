@@ -28,6 +28,8 @@ final class EndpointDocumentation {
     }
 
     static {
+        contract("CustomerMenuController.list", "Danh sách nhà hàng khớp tên cùng các món còn bán. Danh sách rỗng nếu chưa có nhà hàng phù hợp.", null,
+            "400", "Thiếu restaurantName, tên trống hoặc dài hơn 255 ký tự.");
         contract("AuthController.register", "Tạo tài khoản CUSTOMER và phiên đăng nhập; body chứa accessToken, tokenType, expiresIn, userId, role và refreshToken.",
             "JSON gồm phoneNumber (số di động Việt Nam, tối đa 32 ký tự), password (8–72 ký tự) và role=CUSTOMER.",
             "400", "Thiếu/sai JSON; phoneNumber trống, quá 32 ký tự hoặc không phải số di động Việt Nam; password ngoài 8–72 ký tự; role thiếu, sai enum hoặc khác CUSTOMER.",
@@ -99,6 +101,9 @@ final class EndpointDocumentation {
             "404", DRIVER, "409", "trackingSessionId không khớp phiên vị trí hiện hành của tài xế.");
 
         contract("DriverOfferController.list", "Trả body mảng lời mời OFFERED chưa hết hạn của tài xế; mảng rỗng nếu không có lời mời.", null, "404", OFFER);
+        contract("DriverOfferController.refresh", "Trả các lời mời còn hạn sau khi tìm chuyến, hoặc mảng rỗng nếu chưa có chuyến phù hợp.",
+            "Gửi skippedAssignmentIds chứa các UUID của lời mời đang hiển thị. Gửi mảng rỗng để chỉ tìm chuyến.",
+            "400", "Thiếu danh sách, UUID không hợp lệ hoặc danh sách vượt quá 100 phần tử.", "404", DRIVER);
         contract("DriverOfferController.get", "Trả body lời mời theo assignmentId, gồm trạng thái, hạn phản hồi và dữ liệu đơn; có thể trả lời mời đã hết hạn/đã phản hồi.", null,
             "400", "id (assignmentId) không phải UUID hợp lệ.", "404", OFFER);
         contract("DriverOfferController.accept", "Trả body lời mời ACCEPTED, gán chuyến ASSIGNED cho tài xế; gọi lại lời mời đã ACCEPTED trả dữ liệu hiện tại.", null,
@@ -126,7 +131,7 @@ final class EndpointDocumentation {
             "400", "id (deliveryId) không phải UUID hợp lệ.", "404", DELIVERY,
             "409", "Chuyến chưa AT_DROPOFF (và chưa DELIVERED). " + GPS);
         contract("DriverDeliveryController.fail", "Trả body chuyến FAILED và failedAt; đơn/assignment chuyển FAILED, báo cáo và ảnh được lưu. Retry cùng nội dung trả chuyến hiện tại.",
-            "multipart/form-data gồm assignmentId UUID hiện tại, requestId UUID do client tạo, reason (CUSTOMER_UNREACHABLE, CUSTOMER_REFUSED hoặc OTHER), image PNG/JPEG bắt buộc và note tùy chọn tối đa 1000 ký tự. Giữ nguyên mọi dữ liệu khi retry.",
+            "multipart/form-data gồm assignmentId, requestId UUID, reason, image PNG/JPEG bắt buộc và note tùy chọn tối đa 1000 ký tự. Với CUSTOMER_UNREACHABLE, gửi ảnh lịch sử cuộc gọi cho khách. Giữ nguyên mọi dữ liệu khi retry.",
             "400", "id/assignmentId/requestId sai UUID hoặc thiếu tham số bắt buộc; reason sai enum; note quá 1000 ký tự; thiếu image; " + IMAGE,
             "404", DELIVERY + " Hoặc assignmentId không khớp phân công hiện tại.",
             "409", "Chuyến chưa AT_DROPOFF; hoặc đã có báo cáo nhưng requestId, reason, note hoặc hash nội dung ảnh khác lần trước.",
@@ -137,11 +142,11 @@ final class EndpointDocumentation {
             "400", "id (deliveryId) không phải UUID hợp lệ.", "404", DELIVERY + " Hoặc chưa có báo cáo giao thất bại.",
             "503", "Không đọc được ảnh báo cáo thất bại từ kho bằng chứng.");
         contract("DriverDeliveryController.incident", "Trả body sự cố gồm id, deliveryId, assignmentId, reason, outcome, note và createdAt; giải phóng assignment và đưa chuyến về PENDING_ASSIGNMENT, không hủy đơn khách.",
-            "multipart/form-data gồm assignmentId, requestId UUID, reason (PERSONAL, RESTAURANT_DELAY hoặc RESTAURANT_CLOSED), note tùy chọn tối đa 1000 ký tự. RESTAURANT_CLOSED bắt buộc image PNG/JPEG; các lý do khác không nhận ảnh không rỗng. Giữ nguyên dữ liệu khi retry.",
-            "400", "id/assignmentId/requestId sai UUID hoặc thiếu; reason thiếu/sai enum; note quá 1000 ký tự; RESTAURANT_CLOSED thiếu ảnh; lý do khác gửi ảnh không rỗng; " + IMAGE,
+            "multipart/form-data gồm assignmentId, requestId UUID, reason, note tùy chọn tối đa 1000 ký tự. RESTAURANT_CLOSED và CUSTOMER_UNREACHABLE bắt buộc image PNG/JPEG. Với các lý do khác bỏ trường image. Giữ nguyên dữ liệu khi retry.",
+            "400", "Sai UUID, reason thiếu/sai enum, note quá dài hoặc thiếu bằng chứng theo lý do. " + IMAGE,
             "404", DELIVERY + " Hoặc assignmentId không khớp phân công; sự cố retry không thuộc tài xế/chuyến hiện tại.",
             "409", "Chuyến không ở ASSIGNED/AT_PICKUP, đơn không còn PREPARING; với assignmentId đã có sự cố, retry khác requestId, reason, note hoặc hash ảnh. Với RESTAURANT_CLOSED: " + GPS,
-            "413", UPLOAD, "503", "Kho bằng chứng không khả dụng khi lưu ảnh nhà hàng đóng cửa.");
+            "413", UPLOAD, "503", "Kho bằng chứng không khả dụng khi lưu ảnh sự cố.");
         contract("DriverDeliveryController.incidents", "Trả body mảng sự cố do tài xế báo, mới nhất trước; có thể rỗng và không phân trang. outcome là kết quả tại lúc báo, không phải trạng thái chuyến hiện tại.", null, "404", DRIVER);
         contract("DriverDeliveryController.incidentEvidence", "Trả byte ảnh sự cố, Content-Type image/png hoặc image/jpeg; no-store và nosniff, không có JSON body.", null,
             "400", "id của bản ghi sự cố không phải UUID hợp lệ.",
@@ -203,10 +208,10 @@ final class EndpointDocumentation {
             "400", "id (orderId) không phải UUID hợp lệ.", "404", ORDER);
         contract("CustomerOrderController.tracking", "Trả body theo dõi đơn, trạng thái chuyến và thông tin/vị trí tài xế nếu chuyến đang thực hiện; driver và driverLocation có thể null.", null,
             "400", "id (orderId) không phải UUID hợp lệ.", "404", ORDER);
-        contract("CustomerOrderController.cancel", "Trả body OrderResponse sau khi chuyển CANCELLED và lưu lý do; đơn đã CANCELLED được trả lại mà không hủy lần nữa.",
+        contract("CustomerOrderController.cancel", "Trả OrderResponse CANCELLED gồm cancellationCode và cancellationReason. Thử lại cho cùng đơn đã được khách hủy trả kết quả hiện tại.",
             "JSON gồm reason không trắng, tối đa 500 ký tự; id là orderId của khách hiện tại.",
             "400", "id sai UUID; thiếu/sai JSON hoặc reason trống/quá 500 ký tự.", "404", ORDER,
-            "409", "Đơn không còn PENDING và chưa CANCELLED; khách không thể hủy khi nhà hàng đã nhận chuẩn bị hoặc ở trạng thái sau đó.");
+            "409", "Đơn đã được quán nhận chuẩn bị hoặc đã hủy bởi bên khác.");
 
         contract("RestaurantOrderController.list", "Trả body phân trang đơn của nhà hàng, theo createdAt giảm dần, lọc chính xác status nếu có; items có thể rỗng.", null,
             "400", "restaurantId sai UUID; status không thuộc enum OrderStatus; " + PAGING,
@@ -224,10 +229,10 @@ final class EndpointDocumentation {
         contract("RestaurantOrderController.ready", "Trả body OrderResponse READY cùng readyAt; đơn đã READY được trả lại không xử lý lần nữa.", null,
             "400", "restaurantId hoặc orderId không phải UUID hợp lệ.", "404", RESTAURANT,
             "409", "Đơn không ở PREPARING và chưa READY nên không thể đánh dấu món sẵn sàng.");
-        contract("RestaurantOrderController.cancel", "Trả body OrderResponse CANCELLED; hủy chuyến và lời mời OFFERED/ACCEPTED liên quan nếu có. Đơn đã CANCELLED được trả lại không hủy lần nữa.",
-            "JSON gồm reason không trắng, tối đa 500 ký tự, nêu lý do nhà hàng hủy đơn trước READY.",
+        contract("RestaurantOrderController.cancel", "Trả OrderResponse CANCELLED. Chuyến và lời mời còn hiệu lực được hủy trong cùng giao dịch. Tài xế đã nhận có thông báo ghi nguồn hủy.",
+            "JSON gồm reason không trắng, tối đa 500 ký tự, và reasonCode tùy chọn. Gửi RESTAURANT_OUT_OF_STOCK cho hết món hoặc RESTAURANT_ISSUE cho sự cố khác tại quán.",
             "400", "restaurantId/orderId sai UUID; thiếu/sai JSON hoặc reason trống/quá 500 ký tự.", "404", RESTAURANT,
-            "409", "Đơn không ở PENDING/PREPARING và chưa CANCELLED; không cho nhà hàng hủy từ READY trở đi.");
+            "409", "Chỉ hủy đơn PREPARING. Có thể thử lại thao tác quán hủy thành công trước đó.");
     }
 
     private static Contract get(String key) {

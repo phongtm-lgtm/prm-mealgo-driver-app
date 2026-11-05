@@ -78,10 +78,13 @@ Test tích hợp dùng H2, MockMvc, JWT thật và mock MinIO. Bao phủ luồng
 | Phone number | Password | Role |
 |---|---|---|
 | 0900000003 | Mealgo123! | CUSTOMER |
+| 0900000005 | Mealgo123! | CUSTOMER |
 | 0900000002 | Mealgo123! | MERCHANT |
 | 0900000001 | Mealgo123! | DRIVER |
 
-Demo tạo một quán và món Cơm gà giá 45.000 VND. Tài xế ban đầu offline. Lấy ID để gọi API bằng SQL (không mở rộng API CRUD menu/profile ngoài phạm vi đã chốt):
+Quán MealGo Demo Restaurant có bốn món dùng cho Postman. Cơm gà (`Com ga`) giá 45.000 đ, bún bò Huế 55.000 đ, bánh mì thịt 30.000 đ và trà sữa trân châu 35.000 đ. Khi bật seed, backend bổ sung món còn thiếu trên DB hiện có. Giỏ và đơn của mỗi khách gắn với tài khoản đăng nhập. Tài xế ban đầu offline.
+
+Customer gọi `GET /api/v1/customers/menu?restaurantName=MealGo%20Demo%20Restaurant` để đọc mã quán, mã món và giá đang bán. Có thể đối chiếu trực tiếp trong PostgreSQL:
 
 ```powershell
 docker compose exec postgres psql -U mealgo -d mealgo_db -c "select id, name, latitude, longitude from restaurants;"
@@ -177,7 +180,7 @@ Món hết hàng vẫn hiển thị với `available=false`; đặt hàng sẽ k
 GET giỏ rồi gửi `restaurantId`, `items` (menuItemId, quantity, note) sang API đặt hàng bên dưới,
 kèm người nhận, địa chỉ, `paymentMethod=COD` và `Idempotency-Key` duy nhất cho lần đặt.
 Sau khi đặt thành công mới DELETE giỏ. Nếu mạng lỗi, retry cùng key/body để tránh tạo đơn trùng.
-API đặt hàng hiện có không tự xóa giỏ. Chưa có API duyệt menu; ID món/quán để thử local xem phần Dữ liệu demo.
+API đặt hàng giữ lại giỏ. Collection lưu tùy chọn và topping đã gồm trong giá vào `items[].note` của từng món.
 
 | Method | URL | Nội dung |
 |---|---|---|
@@ -200,7 +203,7 @@ Body đặt đơn:
 }
 ```
 
-Backend lưu snapshot món, giá, quán và địa chỉ. Giá từ database, phí giao **cố định 15.000 VND cho MVP**. Chỉ hỗ trợ COD; không giả lập thanh toán online. Cùng idempotency key và body trả đơn cũ; khác body trả 409. Request cùng key đồng thời có thể trả 409 do unique constraint; retry sẽ lấy đơn đã tạo. Chỉ được hủy khi PENDING. Không có API profile/địa chỉ/giỏ hàng.
+Backend lưu snapshot món, giá, quán và địa chỉ. Giá lấy từ database, phí giao **15.000 VND**. Khách thanh toán COD khi giao thành công. Cùng idempotency key và body trả đơn cũ. Dùng lại key với nội dung khác trả 409. Hai request đồng thời dùng cùng key có thể gặp 409 do unique constraint, khi đó thử lại cùng key và body.
 
 ## API Restaurant — xử lý đơn
 
@@ -212,12 +215,25 @@ Prefix `/api/v1/merchant/restaurants/{restaurantId}/orders`.
 | GET | /{orderId} | Chi tiết đơn, tài xế và trạng thái giao |
 | POST | /{orderId}/accept | `{ "estimatedPreparationMinutes": 20 }` |
 | POST | /{orderId}/reject | `{ "reason": "Hết nguyên liệu" }` |
-| POST | /{orderId}/cancel | `{ "reason": "Hết nguyên liệu" }`; chỉ PENDING/PREPARING, từ READY trả 409 |
+| POST | /{orderId}/cancel | `{ "reason": "Hết nguyên liệu", "reasonCode": "RESTAURANT_OUT_OF_STOCK" }` khi PREPARING. Sự cố khác dùng `RESTAURANT_ISSUE`. |
 | POST | /{orderId}/ready | Không cần body |
 
 Chỉ owner của quán có quyền. Accept tạo chuyến giao trong cùng transaction. Không có API CRUD menu/quán hoặc báo cáo doanh thu.
 
-Quy tắc hủy: khách chỉ hủy khi PENDING (trước khi quán nhận). Nhà hàng dùng `/cancel` khi PENDING hoặc PREPARING; hủy đồng thời chuyến giao và các offer còn hiệu lực, thông báo SSE cho tài xế liên quan. `/reject` vẫn chỉ từ chối đơn PENDING. Tài xế báo incident/bỏ chuyến chỉ khi Order PREPARING và chưa lấy hàng; từ READY trả 409. Mọi lý do incident, kể cả RESTAURANT_CLOSED, chỉ bỏ chuyến để tìm tài xế khác, không hủy đơn khách; lý do quán đóng vẫn yêu cầu ảnh/GPS. Dispatcher không mời lại tài xế đã bỏ chuyến. Frontend phải xử lý 409 nếu quán chuyển READY cùng lúc thao tác hủy.
+### Trạng thái đơn và màn hình tài xế
+
+`PENDING` tương ứng với `SUBMITTED` trong đặc tả, `READY` tương ứng với `READY_FOR_PICKUP`. Trạng thái của đơn khách, chuyến giao và từng lời mời được lưu riêng.
+
+| Thao tác | Điều kiện | Thay đổi trong DB | Driver App |
+|---|---|---|---|
+| Tài xế bấm ↻ | Online, ở Free-Pick và đang rảnh | Ghi `REJECTED` cho lời mời đang xem còn hạn. Tìm chuyến phù hợp kế tiếp cho chính tài xế. | Hiện loading rồi thay thẻ đơn hoặc hiện danh sách trống. Khi danh sách ban đầu trống, chỉ tìm đơn mới. |
+| Khách hủy | Đơn `PENDING`, trước khi quán nhận | Đơn → `CANCELLED`. Lưu lý do và mã `CUSTOMER_CANCELLED`. Chuyến và lời mời liên quan, nếu có, cùng bị hủy. | Lời mời biến mất. Nếu đã có tài xế phụ trách, đóng chi tiết, về Free-Pick và hiện “Khách hàng đã hủy đơn này”. Bình thường chuyến chỉ được tạo sau khi quán nhận. |
+| Quán hủy | Đơn `PREPARING` | Đơn, chuyến và lời mời còn hiệu lực → `CANCELLED`. Lưu lý do và mã `RESTAURANT_OUT_OF_STOCK` hoặc `RESTAURANT_ISSUE`. | Dừng dẫn đường tới quán, về Free-Pick. Tài xế đã nhận chuyến thấy “Nhà hàng đã hủy đơn do hết món” hoặc thông báo sự cố tương ứng. |
+| Tài xế trả chuyến | Đơn `PREPARING`, chuyến `ASSIGNED` hoặc `AT_PICKUP` | Phân công → `RELEASED`. Gỡ tài xế khỏi chuyến và đưa chuyến về `PENDING_ASSIGNMENT`. Đơn vẫn `PREPARING`. | Hiện “Đơn hàng sẽ được phân phối cho tài xế khác”. Tài xế trở về Free-Pick và có thể nhận chuyến khác. |
+| Báo khách không nghe máy trước khi quán làm xong | Đơn `PREPARING`, chuyến `ASSIGNED` hoặc `AT_PICKUP` | Báo sự cố `CUSTOMER_UNREACHABLE` kèm ảnh cuộc gọi. Trả chuyến về `PENDING_ASSIGNMENT` để tìm người giao thay. | Chọn **Báo cáo đơn hàng → Khách không nghe máy**, gửi ảnh rồi trở lại Free-Pick khi yêu cầu thành công. |
+| Báo khách không nghe máy | Đã đến điểm giao (`AT_DROPOFF`) | Lưu báo cáo `CUSTOMER_UNREACHABLE` cùng ảnh bằng chứng PNG/JPEG. Đơn, chuyến và phân công → `FAILED`. | Chọn **Báo cáo đơn hàng**, đính kèm ảnh lịch sử cuộc gọi cho khách và gửi. Khi máy chủ xác nhận, đóng chuyến để nhận đơn mới. |
+
+Nhà hàng dùng `/reject` để từ chối đơn còn `PENDING`. Từ `READY`, yêu cầu trả chuyến trước khi lấy hàng sẽ nhận 409. Dịch vụ phân công loại trừ tài xế đã bỏ qua hoặc đã trả chính chuyến đó. Với COD, tiền được thu khi hoàn tất giao hàng nên các tình huống hủy ở trên không phát sinh khoản hoàn tiền.
 
 ## API Driver / Delivery
 
@@ -232,6 +248,7 @@ Prefix driver `/api/v1/drivers`:
 | POST | /me/tracking-session | Không cần body; trả session ID |
 | PUT | /me/location | Body dưới đây |
 | GET | /me/offers | Các offer chưa hết hạn |
+| POST | /me/offers/refresh | `{"skippedAssignmentIds":["<assignmentId đang hiển thị>"]}`. Gửi danh sách rỗng để tìm đơn khi chưa có lời mời. |
 | GET | /me/offers/{assignmentId} | Chi tiết, gồm điểm lấy/giao |
 | POST | /me/offers/{assignmentId}/accept | Nhận đơn |
 | POST | /me/offers/{assignmentId}/reject | Từ chối |
@@ -319,7 +336,7 @@ Sau khi build và chạy backend:
 - **OpenAPI JSON:** <http://localhost:8080/v3/api-docs>
 - **OpenAPI YAML:** <http://localhost:8080/v3/api-docs.yaml>
 
-Tài liệu bao phủ 69 thao tác của 13 controller nghiệp vụ `/api/v1/**`, chia nhóm theo vai trò.
+Tài liệu bao phủ 71 thao tác của 14 controller nghiệp vụ `/api/v1/**`, chia nhóm theo vai trò.
 Không đưa endpoint vận hành Actuator vào danh mục nghiệp vụ.
 Mỗi thao tác có mô tả tiếng Việt về điều kiện, quyền, request/response, lỗi và quy tắc thử lại.
 Schema được sinh trực tiếp từ DTO và Bean Validation, bổ sung diễn giải tiếng Việt từng trường.

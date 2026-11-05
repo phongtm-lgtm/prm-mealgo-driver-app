@@ -4,6 +4,7 @@ import com.mealgo.monolith.driver.dto.DriverAccountDtos.*;
 import com.mealgo.monolith.driver.dto.DriverAccountDtos.Period;
 import com.mealgo.monolith.driver.entity.*;
 import com.mealgo.monolith.driver.repository.*;
+import com.mealgo.monolith.order.enums.CancellationCode;
 import com.mealgo.monolith.common.dto.PageResponse;
 import com.mealgo.monolith.common.exception.ApiException;
 import lombok.RequiredArgsConstructor;
@@ -97,6 +98,20 @@ public class DriverAccountService {
         e.setRateConfigured(earn.signum()>0); e.setBalanceAfter(earnings.balance(driver.getId()).add(earn)); e.setCreatedAt(deliveredAt); earnings.save(e);
         notifyEarning(driver,deliveryId,earn);
     }
+    public void notifyCancellation(UUID driverId, UUID deliveryId, CancellationCode code) {
+        var notice = new DriverNotification();
+        notice.setDriverId(driverId);
+        notice.setReferenceId(deliveryId);
+        notice.setType("ORDER_CANCELLED");
+        notice.setTitle("Đơn hàng đã hủy");
+        notice.setMessage(switch (code) {
+            case CUSTOMER_CANCELLED -> "Khách hàng đã hủy đơn này";
+            case RESTAURANT_OUT_OF_STOCK -> "Nhà hàng đã hủy đơn do hết món";
+            case RESTAURANT_ISSUE -> "Nhà hàng đã hủy đơn do sự cố tại quán";
+        });
+        notifications.save(notice);
+    }
+
     private void notifyEarning(Driver driver,UUID deliveryId,BigDecimal amount) {
         if(!Boolean.FALSE.equals(driver.getInAppNotificationsEnabled())) {
             var n=new DriverNotification(); n.setDriverId(driver.getId()); n.setReferenceId(deliveryId); n.setType("DELIVERY_COMPLETED");
