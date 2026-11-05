@@ -1,5 +1,6 @@
 package com.mealgo.monolith.order.entity;
 import com.mealgo.monolith.order.enums.OrderStatus;
+import com.mealgo.monolith.order.enums.CancellationCode;
 import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
@@ -32,6 +33,7 @@ public class Order {
     @Column(precision=19,scale=2) private BigDecimal total;
     private String currency = "VND";
     @Column(length=500) private String cancellationReason;
+    @Enumerated(EnumType.STRING) private CancellationCode cancellationCode;
     private Instant createdAt = Instant.now();
     private Instant updatedAt = Instant.now();
     private Instant estimatedReadyAt;

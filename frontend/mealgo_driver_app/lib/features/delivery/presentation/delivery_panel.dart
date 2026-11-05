@@ -196,33 +196,29 @@ class DeliveryPanel extends StatelessWidget {
                 ),
               ],
             ),
-            if (order.stage.index <= DeliveryStage.atPickup.index)
-              TextButton.icon(
-                onPressed: controller.busy ? null : () => _reject(context),
-                icon: const Icon(Icons.cancel_outlined),
-                label: const Text('Từ chối / Quán đóng cửa'),
-              ),
-            if (!order.stage.isTerminal)
-              TextButton.icon(
-                onPressed: controller.busy
-                    ? null
-                    : () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) =>
-                              ReportPage(controller: controller, order: order),
-                        ),
-                      ),
-                icon: const Icon(Icons.report_problem_outlined),
-                label: Text(
-                  order.stage == DeliveryStage.atCustomer
-                      ? 'Báo cáo giao thất bại'
-                      : 'Chưa đủ điều kiện báo thất bại',
-                ),
-              ),
           ] else
             InfoRow('Tiền cần thu từ khách', money(order.total)),
           const SizedBox(height: 12),
         ],
+        if (actionOnly && !order.stage.isTerminal)
+          Wrap(
+            alignment: WrapAlignment.center,
+            children: [
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: Colors.white),
+                onPressed: controller.busy ? null : () => _chooseReason(context, release: false),
+                icon: const Icon(Icons.report_problem_outlined, size: 18),
+                label: const Text('Báo cáo đơn hàng'),
+              ),
+              if (order.canRelease)
+                TextButton.icon(
+                  style: TextButton.styleFrom(foregroundColor: Colors.white),
+                  onPressed: controller.busy ? null : () => _chooseReason(context, release: true),
+                  icon: const Icon(Icons.cancel_outlined, size: 18),
+                  label: const Text('Hủy chuyến'),
+                ),
+            ],
+          ),
         if (showAction)
           SlideAction(
             label: preview ? 'Trượt để nhận đơn' : order.stage.action,
@@ -306,46 +302,64 @@ class DeliveryPanel extends StatelessWidget {
     ),
   );
 
-  Future<void> _reject(BuildContext context) async {
+  Future<void> _chooseReason(BuildContext context, {required bool release}) async {
+    const releaseReasons = {
+      'VEHICLE_BREAKDOWN': 'Xe hỏng',
+      'BAD_WEATHER': 'Thời tiết xấu',
+      'PERSONAL': 'Sự cố cá nhân',
+    };
+    const restaurantReasons = {
+      'RESTAURANT_CLOSED': 'Quán đóng cửa',
+      'RESTAURANT_DELAY': 'Quán chuẩn bị quá lâu',
+    };
+    const deliveryReasons = {
+      'CUSTOMER_UNREACHABLE': 'Khách không nghe máy',
+      'WRONG_ADDRESS': 'Sai thông tin giao hàng',
+      'CUSTOMER_REFUSED': 'Khách từ chối nhận hàng',
+    };
+    final reasons = release ? releaseReasons : {
+      if (order.canRelease) ...restaurantReasons,
+      ...deliveryReasons,
+    };
+    bool requiresDropoff(String key, DeliveryOrder trip) =>
+        deliveryReasons.containsKey(key) &&
+        !(key == 'CUSTOMER_UNREACHABLE' && trip.canRelease);
     final reason = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child: ListView(
+          shrinkWrap: true,
           children: [
-            const ListTile(
+            ListTile(
               title: Text(
-                'Chọn lý do từ chối',
-                style: TextStyle(fontWeight: FontWeight.w700),
+                release ? 'Chọn lý do hủy chuyến' : 'Báo cáo đơn hàng',
+                style: const TextStyle(fontWeight: FontWeight.w700),
               ),
             ),
-            for (final reason in [
-              'Lý do cá nhân',
-              'Quán chuẩn bị quá lâu',
-              'Quán đã đóng cửa',
-            ])
+            for (final entry in reasons.entries)
               ListTile(
-                title: Text(reason),
+                title: Text(entry.value),
+                subtitle: requiresDropoff(entry.key, order) &&
+                        order.stage != DeliveryStage.atCustomer
+                    ? const Text('Gửi sau khi xác nhận đã đến điểm giao')
+                    : null,
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.pop(context, reason),
+                enabled: !requiresDropoff(entry.key, order) || order.stage == DeliveryStage.atCustomer,
+                onTap: () => Navigator.pop(context, entry.key),
               ),
           ],
         ),
       ),
     );
-    if (reason == null || !context.mounted) return;
+    if (reason == null || !context.mounted || controller.activeOrder?.id != order.id) return;
+    final current = controller.activeOrder!;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => IncidentPage(
-          controller: controller,
-          order: order,
-          reason: {
-            'Lý do cá nhân': 'PERSONAL',
-            'Quán chuẩn bị quá lâu': 'RESTAURANT_DELAY',
-            'Quán đã đóng cửa': 'RESTAURANT_CLOSED',
-          }[reason]!,
-        ),
+        builder: (_) => requiresDropoff(reason, current)
+            ? ReportPage(controller: controller, order: current, initialReason: reason)
+            : IncidentPage(controller: controller, order: current, reason: reason,
+                reasonLabel: reasons[reason]!),
       ),
     );
   }

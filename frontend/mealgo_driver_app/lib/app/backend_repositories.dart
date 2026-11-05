@@ -1,4 +1,5 @@
 import '../driver_store.dart';
+import '../api_client.dart';
 import '../core/delivery_distance.dart';
 import '../features/account/domain/account_repository.dart';
 import '../features/delivery/domain/delivery.dart';
@@ -33,7 +34,9 @@ class BackendRepositories
       id: id,
       orderId: d['orderId'] as String?,
       assignmentId: d['assignmentId'] as String?,
-      restaurant: d['restaurant']?['name'] ?? 'Điểm lấy hàng',
+      orderStatus: d['orderStatus'] as String?,
+      cancellationCode: d['cancellationCode'] as String?,
+      restaurant: d['restaurant']?['name'] ?? d['restaurantName'] ?? 'Điểm lấy hàng',
       pickupAddress: d['pickup']?['address'] ?? '',
       customer: d['recipient']?['name'] ?? 'Điểm giao hàng',
       dropoffAddress: d['dropoff']?['address'] ?? '',
@@ -107,12 +110,23 @@ class BackendRepositories
 
   @override
   Future<List<DeliveryOrder>> getAvailable() async {
-    await store.refresh();
-    check();
-    return store.offers
-        .map((d) => mapOrder(Map<String, dynamic>.from(d), offer: true))
-        .toList();
+    final offers = await store.api.request('GET', '/drivers/me/offers');
+    return _mapOffers(offers as List);
   }
+
+  @override
+  Future<List<DeliveryOrder>> refreshOffers(List<DeliveryOrder> skipped) async {
+    final offers = await store.api.request(
+      'POST',
+      '/drivers/me/offers/refresh',
+      {'skippedAssignmentIds': skipped.map((order) => order.assignmentId!).toList()},
+    );
+    return _mapOffers(offers as List);
+  }
+
+  List<DeliveryOrder> _mapOffers(List<dynamic> offers) => offers
+      .map((offer) => mapOrder(Map<String, dynamic>.from(offer), offer: true))
+      .toList();
 
   Future<DeliveryOrder?> current() async {
     final d = await store.api.request('GET', '/drivers/me/deliveries/current');
@@ -128,6 +142,17 @@ class BackendRepositories
     return (d['items'] as List)
         .map((v) => mapOrder(Map<String, dynamic>.from(v)))
         .toList();
+  }
+
+  Future<DeliveryOrder?> pastDelivery(String id) async {
+    try {
+      final result = await store.api.request('GET', '/drivers/me/deliveries/history/$id');
+      return mapOrder(Map<String, dynamic>.from(result));
+    } on ApiException catch (e) {
+      // An assignment released to another driver is no longer in this history.
+      if (e.status == 404) return null;
+      rethrow;
+    }
   }
 
   Future<void> rejectOffer(String id) async {
@@ -269,11 +294,11 @@ class BackendRepositories
     store.delivery = d;
     final ok = await store.reportFailure(
       report.requestId ?? DriverStore.uuid(),
-      {
-            'Không liên lạc được với khách': 'CUSTOMER_UNREACHABLE',
-            'Khách từ chối nhận hàng': 'CUSTOMER_REFUSED',
-          }[report.reason] ??
-          'OTHER',
+      switch (report.reason) {
+        'CUSTOMER_UNREACHABLE' || 'Không liên lạc được với khách' => 'CUSTOMER_UNREACHABLE',
+        'CUSTOMER_REFUSED' || 'Khách từ chối nhận hàng' => 'CUSTOMER_REFUSED',
+        _ => 'OTHER',
+      },
       report.note,
       report.bytes!,
       report.evidence,

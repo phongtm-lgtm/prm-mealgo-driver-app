@@ -18,6 +18,8 @@ class DeliveryOrder {
     required this.id,
     this.orderId,
     this.assignmentId,
+    this.orderStatus,
+    this.cancellationCode,
     required this.restaurant,
     required this.pickupAddress,
     required this.customer,
@@ -38,6 +40,8 @@ class DeliveryOrder {
   /// Business order and assignment IDs are distinct from this delivery ID.
   final String? orderId;
   final String? assignmentId;
+  final String? orderStatus;
+  final String? cancellationCode;
   final String restaurant;
   final String pickupAddress;
   final String customer;
@@ -52,11 +56,16 @@ class DeliveryOrder {
   final int fee;
   final int total;
   final DeliveryStage stage;
+  bool get canRelease =>
+      orderStatus == 'PREPARING' &&
+      (stage == DeliveryStage.accepted || stage == DeliveryStage.atPickup);
 
   DeliveryOrder withStage(DeliveryStage value) => DeliveryOrder(
     id: id,
     orderId: orderId,
     assignmentId: assignmentId,
+    orderStatus: orderStatus,
+    cancellationCode: cancellationCode,
     restaurant: restaurant,
     pickupAddress: pickupAddress,
     customer: customer,
@@ -93,6 +102,7 @@ class DeliveryReport {
 
 abstract interface class DeliveryRepository {
   Future<List<DeliveryOrder>> getAvailable();
+  Future<List<DeliveryOrder>> refreshOffers(List<DeliveryOrder> skipped);
   Future<DeliveryOrder> accept(String id);
   Future<DeliveryOrder> advance(String id);
   Future<DeliveryOrder> reject(String id, String reason);

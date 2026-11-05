@@ -57,7 +57,7 @@ class OpenApiDocumentationTest {
                 count++;
             }
         }
-        assertEquals(69, count, "Phải mô tả tất cả API của 13 controller; cập nhật khi thêm endpoint.");
+        assertEquals(71, count, "Phải mô tả tất cả API của 14 controller; cập nhật khi thêm endpoint.");
         assertTrue(api.path("paths").path("/api/v1/drivers/me/deliveries/current").path("get").path("responses").has("204"));
         assertTrue(api.path("paths").path("/api/v1/drivers/me/events").path("get").path("responses").path("200")
             .path("content").has("text/event-stream"));

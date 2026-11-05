@@ -11,9 +11,11 @@ import '../../home/presentation/driver_controller.dart';
 import '../domain/delivery.dart';
 
 class ReportPage extends StatefulWidget {
-  const ReportPage({super.key, required this.controller, required this.order});
+  const ReportPage({super.key, required this.controller, required this.order,
+      this.initialReason = 'CUSTOMER_UNREACHABLE'});
   final DriverController controller;
   final DeliveryOrder order;
+  final String initialReason;
 
   @override
   State<ReportPage> createState() => _ReportPageState();
@@ -27,7 +29,12 @@ class _ReportPageState extends State<ReportPage> {
   String _filename = 'evidence.jpg';
   String _requestId = DriverStore.uuid();
   bool _submitting = false;
-  String _reason = 'Không liên lạc được với khách';
+  late String _reason = widget.initialReason;
+  static const reasons = {
+    'CUSTOMER_UNREACHABLE': 'Khách không nghe máy',
+    'CUSTOMER_REFUSED': 'Khách từ chối nhận hàng',
+    'WRONG_ADDRESS': 'Sai thông tin giao hàng',
+  };
   String? _error;
 
   @override
@@ -82,17 +89,12 @@ class _ReportPageState extends State<ReportPage> {
                 DropdownButtonFormField<String>(
                   initialValue: _reason,
                   isExpanded: true,
-                  items:
-                      [
-                            'Không liên lạc được với khách',
-                            'Khách từ chối nhận hàng',
-                            'Địa chỉ không chính xác',
-                          ]
+                  items: reasons.entries
                           .map(
                             (s) => DropdownMenuItem(
-                              value: s,
+                              value: s.key,
                               child: Text(
-                                s,
+                                s.value,
                                 style: const TextStyle(fontSize: 13),
                               ),
                             ),
@@ -158,7 +160,9 @@ class _ReportPageState extends State<ReportPage> {
                   label: Text(
                     _evidence
                         ? 'Đã chọn ảnh bằng chứng'
-                        : 'Đính kèm ảnh bằng chứng',
+                      : _reason == 'CUSTOMER_UNREACHABLE'
+                      ? 'Đính kèm ảnh chụp lịch sử cuộc gọi'
+                      : 'Đính kèm ảnh bằng chứng',
                   ),
                 ),
               ],
@@ -203,7 +207,7 @@ class _ReportPageState extends State<ReportPage> {
       ),
     );
     if (!mounted) return;
-    if (success) {
+    if (success && ModalRoute.of(context)?.isCurrent == true) {
       setState(() => _submitting = false);
       await showDialog<void>(
         context: context,
@@ -220,7 +224,7 @@ class _ReportPageState extends State<ReportPage> {
           ],
         ),
       );
-      if (mounted) Navigator.pop(context);
+      if (mounted && ModalRoute.of(context)?.isCurrent == true) Navigator.pop(context);
     } else {
       setState(() {
         _submitting = false;

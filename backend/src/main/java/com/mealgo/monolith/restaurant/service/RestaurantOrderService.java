@@ -53,11 +53,12 @@ public class RestaurantOrderService {
         authorize(restaurantId); var o = orders.lock(orderId); belongs(o,restaurantId);
         if (o.getStatus()==OrderStatus.READY) return mapper.toResponse(o);
         orders.require(o,OrderStatus.PREPARING); o.setStatus(OrderStatus.READY); o.setReadyAt(Instant.now()); o.setUpdatedAt(Instant.now());
+        deliveries.notifyRestaurantReady(orderId);
         return mapper.toResponse(o);
     }
-    @Transactional public OrderResponse cancel(UUID restaurantId,UUID orderId,Reject r) {
-        authorize(restaurantId); belongs(orders.get(orderId),restaurantId);
-        return mapper.toResponse(deliveries.cancelByRestaurant(orderId,r.reason()));
+    @Transactional public OrderResponse cancel(UUID restaurantId,UUID orderId,Cancel r) {
+        authorize(restaurantId);
+        return orders.cancelByRestaurant(orderId,restaurantId,r.reason(),r.reasonCode());
     }
     private void authorize(UUID id) {
         var r = restaurants.findById(id).orElseThrow(() -> ApiException.notFound("Restaurant not found"));

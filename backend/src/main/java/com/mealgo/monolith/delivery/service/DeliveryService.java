@@ -11,12 +11,14 @@ import com.mealgo.monolith.delivery.repository.*;
 import com.mealgo.monolith.driver.entity.Driver;
 import com.mealgo.monolith.driver.service.DriverService;
 import com.mealgo.monolith.order.entity.Order;
+import com.mealgo.monolith.order.event.OrderCancelled;
 import com.mealgo.monolith.order.enums.OrderStatus;
 import com.mealgo.monolith.order.mapper.OrderMapper;
 import com.mealgo.monolith.order.service.OrderService;
 import com.mealgo.monolith.restaurant.dto.RestaurantOrderDtos.Detail;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.*;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -41,6 +43,7 @@ public class DeliveryService {
     private final ProximityService proximity;
     private final EvidenceStorage storage;
     private final DriverEventService events;
+    private final DispatchService dispatch;
     private final com.mealgo.monolith.driver.service.DriverAccountService accounts;
 
     @Transactional public void create(Order order) {
@@ -49,7 +52,15 @@ public class DeliveryService {
         }
     }
     @Transactional(readOnly=true) public List<Offer> offers() {
-        return assignments.findByDriverIdAndStatusAndExpiresAtAfter(drivers.myDriver().getId(),AssignmentStatus.OFFERED,Instant.now())
+        return offersFor(drivers.myDriver().getId());
+    }
+    @Transactional public List<Offer> refreshOffers(Set<UUID> skippedAssignmentIds) {
+        var driver = drivers.lockMine();
+        dispatch.updateOffers(driver, skippedAssignmentIds);
+        return offersFor(driver.getId());
+    }
+    private List<Offer> offersFor(UUID driverId) {
+        return assignments.findByDriverIdAndStatusAndExpiresAtAfter(driverId,AssignmentStatus.OFFERED,Instant.now())
                 .stream().map(a -> mapper.offer(a,orders.get(delivery(a.getDeliveryId()).getOrderId()))).toList();
     }
     @Transactional(readOnly=true) public Offer offer(UUID id) {
@@ -147,6 +158,7 @@ public class DeliveryService {
         d.setStatus(DeliveryStatus.FAILED); d.setFailedAt(Instant.now()); d.setUpdatedAt(Instant.now());
         o.setStatus(OrderStatus.FAILED); o.setUpdatedAt(Instant.now());
         assignments.findById(assignmentId).orElseThrow().setStatus(AssignmentStatus.FAILED);
+        events.changedAfterCommit(driver.getId());
         return mapper.current(d,o);
     }
     @Transactional(readOnly=true) public Report report(UUID id) { return mapper.report(ownedReport(id)); }
@@ -161,8 +173,9 @@ public class DeliveryService {
     @Transactional public IncidentResult incident(UUID id,UUID assignmentId,UUID requestId,IncidentReason reason,String note,MultipartFile image) {
         if(note!=null && note.length()>1000) throw ApiException.badRequest("Note maximum 1000 characters");
         if(reason==null) throw ApiException.badRequest("Reason required");
-        var validated=reason==IncidentReason.RESTAURANT_CLOSED?validateImageRequired(image):null;
-        if(reason!=IncidentReason.RESTAURANT_CLOSED && image!=null && !image.isEmpty()) throw ApiException.badRequest("Evidence only accepted for restaurant closure");
+        boolean needsImage = reason == IncidentReason.RESTAURANT_CLOSED || reason == IncidentReason.CUSTOMER_UNREACHABLE;
+        if (!needsImage && image != null && !image.isEmpty()) throw ApiException.badRequest("Unexpected image for this incident reason");
+        var validated = needsImage ? validateImage(image) : null;
         var driver=drivers.lockMine();
         // Check immutable receipt before delivery ownership, which changes on reassignment.
         var existing=incidents.findByAssignmentId(assignmentId);
@@ -193,31 +206,28 @@ public class DeliveryService {
         events.changedAfterCommit(driver.getId());
         return incidentResult(i);
     }
-    @Transactional public Order cancelByRestaurant(UUID orderId,String reason) {
-        // Match driver actions: lock delivery before order to avoid inverse lock ordering.
-        var found=deliveries.findByOrderId(orderId);
-        var d=found.isPresent()?lock(found.get().getId()):null;
-        var o=orders.lock(orderId);
-        if(o.getStatus()==OrderStatus.CANCELLED) return o;
-        if(!List.of(OrderStatus.PENDING,OrderStatus.PREPARING).contains(o.getStatus()))
-            throw ApiException.conflict("Restaurant can only cancel before READY");
-        o.setStatus(OrderStatus.CANCELLED); o.setCancellationReason(reason); o.setUpdatedAt(Instant.now());
-        if(d!=null) {
-            d.setStatus(DeliveryStatus.CANCELLED); d.setUpdatedAt(Instant.now());
-            events.changedAfterCommit(d.getDriverId());
-            // Cancel outstanding offers too, including offers not yet accepted.
-            for(var a:assignments.findByDeliveryId(d.getId())) {
-                if(a.getStatus()==AssignmentStatus.OFFERED || a.getStatus()==AssignmentStatus.ACCEPTED) {
-                    a.setStatus(AssignmentStatus.CANCELLED);
-                    events.changedAfterCommit(a.getDriverId());
-                }
+    // Synchronous listener joins the order transaction while its delivery lock is held.
+    @EventListener
+    public void onOrderCancelled(OrderCancelled event) {
+        if (event.deliveryId() == null) return;
+        var delivery = delivery(event.deliveryId());
+        delivery.setStatus(DeliveryStatus.CANCELLED);
+        delivery.setUpdatedAt(Instant.now());
+        var affected = new HashSet<UUID>();
+        if (delivery.getDriverId() != null) {
+            accounts.notifyCancellation(delivery.getDriverId(), delivery.getId(), event.code());
+            affected.add(delivery.getDriverId());
+        }
+        for (var offer : assignments.findByDeliveryId(delivery.getId())) {
+            if (offer.getStatus() == AssignmentStatus.OFFERED || offer.getStatus() == AssignmentStatus.ACCEPTED) {
+                offer.setStatus(AssignmentStatus.CANCELLED);
+                affected.add(offer.getDriverId());
             }
         }
-        return o;
+        affected.forEach(events::changedAfterCommit);
     }
-    private ValidatedImage validateImageRequired(MultipartFile image) {
-        if(image==null) throw ApiException.badRequest("Restaurant closure requires image evidence");
-        return validateImage(image);
+    public void notifyRestaurantReady(UUID orderId) {
+        deliveries.findByOrderId(orderId).ifPresent(d -> events.changedAfterCommit(d.getDriverId()));
     }
     @Transactional(readOnly=true) public EvidenceContent incidentEvidence(UUID id) {
         var i=incidents.findByIdAndDriverId(id,drivers.myDriver().getId()).orElseThrow(()->ApiException.notFound("Incident not found"));
@@ -262,6 +272,7 @@ public class DeliveryService {
     }
     private record ValidatedImage(byte[] bytes,String contentType,String hash) {}
     private ValidatedImage validateImage(MultipartFile image) {
+        if (image == null) throw ApiException.badRequest("Image evidence is required");
         if (image.isEmpty() || image.getSize()>5*1024*1024) throw ApiException.badRequest("Image must be 1 byte to 5 MB");
         try {
             byte[] bytes = image.getBytes();

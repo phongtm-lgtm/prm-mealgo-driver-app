@@ -1,4 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:mealgo_driver_app/api_client.dart';
 import 'package:mealgo_driver_app/app/backend_repositories.dart';
 import 'package:mealgo_driver_app/driver_store.dart';
 import 'package:mealgo_driver_app/features/delivery/domain/delivery.dart';
@@ -29,5 +34,37 @@ void main() {
     }, offer: true);
     expect(order.id, 'assignment-1');
     store.dispose();
+  });
+
+  test('refresh skips assignment IDs and polls load current server offers', () async {
+    final requests = <http.Request>[];
+    final oldOffer = {'assignmentId': 'assignment-1', 'deliveryId': 'delivery-1'};
+    final newOffer = {
+      'assignmentId': 'assignment-2',
+      'deliveryId': 'delivery-2',
+      'orderId': 'order-2',
+      'restaurantName': 'Quán A',
+    };
+    final store = DriverStore(
+      api: ApiClient(client: MockClient((request) async {
+        requests.add(request);
+        return http.Response.bytes(utf8.encode(jsonEncode([newOffer])), 200);
+      })),
+    );
+    addTearDown(store.dispose);
+    store.offers = [oldOffer];
+    final repo = BackendRepositories(store);
+    final result = await repo.refreshOffers([repo.mapOrder(oldOffer, offer: true)]);
+    expect(result.single.id, 'assignment-2');
+    expect(result.single.orderId, 'order-2');
+    expect(result.single.restaurant, 'Quán A');
+    expect(requests.single.method, 'POST');
+    expect(requests.single.url.path, '/api/v1/drivers/me/offers/refresh');
+    expect(jsonDecode(requests.single.body), {
+      'skippedAssignmentIds': ['assignment-1'],
+    });
+    expect((await repo.getAvailable()).single.id, 'assignment-2');
+    expect(requests.last.method, 'GET');
+    expect(requests.last.url.path, '/api/v1/drivers/me/offers');
   });
 }

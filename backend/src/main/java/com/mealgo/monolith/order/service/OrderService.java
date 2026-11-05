@@ -6,13 +6,17 @@ import com.mealgo.monolith.common.dto.PageResponse;
 import com.mealgo.monolith.common.exception.ApiException;
 import com.mealgo.monolith.common.security.CurrentUser;
 import com.mealgo.monolith.customer.dto.request.*;
+import com.mealgo.monolith.delivery.repository.DeliveryRepository;
 import com.mealgo.monolith.order.dto.OrderResponse;
 import com.mealgo.monolith.order.entity.*;
 import com.mealgo.monolith.order.enums.OrderStatus;
+import com.mealgo.monolith.order.enums.CancellationCode;
+import com.mealgo.monolith.order.event.OrderCancelled;
 import com.mealgo.monolith.order.mapper.OrderMapper;
 import com.mealgo.monolith.order.repository.OrderRepository;
 import com.mealgo.monolith.restaurant.repository.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +34,8 @@ public class OrderService {
     private final CurrentUser current;
     private final OrderMapper mapper;
     private final ObjectMapper json;
+    private final DeliveryRepository deliveries;
+    private final ApplicationEventPublisher events;
 
     @Transactional
     public OrderResponse place(String key, PlaceOrderRequest request) {
@@ -74,12 +80,35 @@ public class OrderService {
         return o;
     }
     @Transactional public OrderResponse cancel(UUID id,CancelOrderRequest r) {
-        var o = lock(id);
-        if (!o.getCustomerId().equals(current.id())) throw ApiException.notFound("Order not found");
-        if (o.getStatus()==OrderStatus.CANCELLED) return mapper.toResponse(o);
-        require(o,OrderStatus.PENDING);
-        o.setStatus(OrderStatus.CANCELLED); o.setCancellationReason(r.reason()); o.setUpdatedAt(Instant.now());
-        return mapper.toResponse(o);
+        return cancel(id,current.id(),r.reason(),CancellationCode.CUSTOMER_CANCELLED);
+    }
+    @Transactional public OrderResponse cancelByRestaurant(UUID id,UUID restaurantId,String reason,CancellationCode code) {
+        if (code == CancellationCode.CUSTOMER_CANCELLED) throw ApiException.badRequest("Expected a restaurant cancellation reason");
+        return cancel(id,restaurantId,reason,code == null ? CancellationCode.RESTAURANT_OUT_OF_STOCK : code);
+    }
+    private OrderResponse cancel(UUID id, UUID ownerId, String reason, CancellationCode code) {
+        // Driver actions take these locks in the same order.
+        var delivery = deliveries.findLockedByOrderId(id);
+        var order = lock(id);
+        boolean customer = code == CancellationCode.CUSTOMER_CANCELLED;
+        if (!ownerId.equals(customer ? order.getCustomerId() : order.getRestaurantId()))
+            throw ApiException.notFound("Order not found");
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            if (order.getCancellationCode() != null
+                    && (order.getCancellationCode() == CancellationCode.CUSTOMER_CANCELLED) != customer)
+                throw ApiException.conflict("Order already cancelled by another party");
+            return mapper.toResponse(order);
+        }
+        require(order, customer ? OrderStatus.PENDING : OrderStatus.PREPARING);
+        // A concurrent restaurant acceptance can create a delivery between the two lock queries.
+        if (delivery.isEmpty() && deliveries.existsByOrderId(id))
+            throw ApiException.conflict("Delivery just created. Retry cancellation.");
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setCancellationReason(reason);
+        order.setCancellationCode(code);
+        order.setUpdatedAt(Instant.now());
+        events.publishEvent(new OrderCancelled(id, delivery.map(d -> d.getId()).orElse(null), code));
+        return mapper.toResponse(order);
     }
     @Transactional(readOnly=true) public Order get(UUID id) { return orders.findById(id).orElseThrow(() -> ApiException.notFound("Order not found")); }
     @Transactional public Order lock(UUID id) { return orders.findLockedById(id).orElseThrow(() -> ApiException.notFound("Order not found")); }

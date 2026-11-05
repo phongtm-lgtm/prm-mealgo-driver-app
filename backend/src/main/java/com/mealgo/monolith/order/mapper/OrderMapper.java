@@ -11,6 +11,6 @@ public class OrderMapper {
                 new OrderResponse.Stop(o.getPickupAddress(),o.getPickupLatitude(),o.getPickupLongitude()),
                 new OrderResponse.Stop(o.getDropoffAddress(),o.getDropoffLatitude(),o.getDropoffLongitude()),
                 o.getDeliveryNote(),o.getPaymentMethod(),o.getSubtotal(),o.getDeliveryFee(),o.getTotal(),o.getCurrency(),
-                o.getCreatedAt(),o.getUpdatedAt(),o.getEstimatedReadyAt(),o.getReadyAt(),o.getCancellationReason());
+                o.getCreatedAt(),o.getUpdatedAt(),o.getEstimatedReadyAt(),o.getReadyAt(),o.getCancellationReason(),o.getCancellationCode());
     }
 }

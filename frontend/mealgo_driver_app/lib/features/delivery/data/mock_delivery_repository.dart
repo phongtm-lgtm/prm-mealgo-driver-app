@@ -1,9 +1,10 @@
 import '../domain/delivery.dart';
 
-class MockDeliveryRepository implements DeliveryRepository {
+class MockDeliveryRepository implements DeliveryRepository, DeliveryIncidentRepository {
   final Map<String, DeliveryOrder> _available = {
     'MG-1024': const DeliveryOrder(
       id: 'MG-1024',
+      orderStatus: 'PREPARING',
       restaurant: 'Cơm Tấm Sài Gòn',
       pickupAddress: '128 Nguyễn Trãi, P. Bến Thành, Quận 1',
       customer: 'Nguyễn V*** • 0987 *** 321',
@@ -15,6 +16,7 @@ class MockDeliveryRepository implements DeliveryRepository {
     ),
     'MG-1025': const DeliveryOrder(
       id: 'MG-1025',
+      orderStatus: 'PREPARING',
       restaurant: 'Tea Pops • Trà sữa & Cà phê',
       pickupAddress: '42 Lê Văn Sỹ, Phường 13, Quận 3',
       customer: 'Trần T*** • 0903 *** 456',
@@ -26,6 +28,7 @@ class MockDeliveryRepository implements DeliveryRepository {
     ),
     'MG-1026': const DeliveryOrder(
       id: 'MG-1026',
+      orderStatus: 'PREPARING',
       restaurant: 'Bún Bò Huế • Mộc',
       pickupAddress: '210 Điện Biên Phủ, Quận Bình Thạnh',
       customer: 'Lê H*** • 0912 *** 789',
@@ -45,6 +48,15 @@ class MockDeliveryRepository implements DeliveryRepository {
   @override
   Future<List<DeliveryOrder>> getAvailable() async {
     await _delay();
+    return List.unmodifiable(_available.values);
+  }
+
+  @override
+  Future<List<DeliveryOrder>> refreshOffers(List<DeliveryOrder> skipped) async {
+    await _delay();
+    for (final order in skipped) {
+      _available.remove(order.id);
+    }
     return List.unmodifiable(_available.values);
   }
 
@@ -87,6 +99,20 @@ class MockDeliveryRepository implements DeliveryRepository {
       throw StateError('Đơn đã lấy hàng. Vui lòng dùng chức năng báo cáo.');
     }
     return _accepted[id] = order.withStage(DeliveryStage.cancelled);
+  }
+
+  @override
+  Future<Map<String, dynamic>> submitIncident(String deliveryId, String reason,
+      String note, String requestId, List<int>? bytes, String filename) async {
+    if (!_findActive(deliveryId).canRelease) {
+      throw StateError('Nhà hàng đã làm xong đơn này.');
+    }
+    if ((reason == 'RESTAURANT_CLOSED' || reason == 'CUSTOMER_UNREACHABLE') &&
+        (bytes == null || bytes.isEmpty)) {
+      throw StateError('Vui lòng đính kèm ảnh bằng chứng.');
+    }
+    await reject(deliveryId, reason);
+    return {'deliveryId': deliveryId, 'outcome': 'RELEASED'};
   }
 
   @override
